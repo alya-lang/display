@@ -5,4 +5,6 @@ extern "C" from "display"
     function alya_display_add(a: i32, b: i32) -> i32
     function display_native_count() -> i32
     function display_native_at(index: i32) -> str
+    function display_native_extra(index: i32) -> str
+    function display_native_modes_all(disp: i32) -> str
 end

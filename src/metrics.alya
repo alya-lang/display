@@ -73,6 +73,16 @@ pub function has_color_profile(d: DisplayInfo) -> bool
     return true
 end
 
+## Returns 1 when a usable area is known, 0 otherwise.
+pub function has_work_area(d: DisplayInfo) -> bool
+    return d.has_work_area()
+end
+
+## Returns 1 when EDID identity is present, 0 otherwise.
+pub function has_edid_info(d: DisplayInfo) -> bool
+    return d.has_edid()
+end
+
 ## Filters a display list to portrait panels (90/270 degrees).
 pub function portrait_only(list: array) -> array
     let out = []
@@ -97,6 +107,36 @@ pub function hidpi_only(list: array) -> array
     for d in list
         let info: DisplayInfo = d
         if info.is_hidpi() == true
+            out.push(info)
+        end
+    end
+    return out
+end
+
+## Filters a display list to HDR panels (hdr flag set).
+pub function hdr_only(list: array) -> array
+    let out = []
+    if list is null
+        return out
+    end
+    for d in list
+        let info: DisplayInfo = d
+        if info.is_hdr() == true
+            out.push(info)
+        end
+    end
+    return out
+end
+
+## Filters a display list to wide-gamut panels (P3).
+pub function wide_gamut_only(list: array) -> array
+    let out = []
+    if list is null
+        return out
+    end
+    for d in list
+        let info: DisplayInfo = d
+        if info.is_wide_gamut() == true
             out.push(info)
         end
     end

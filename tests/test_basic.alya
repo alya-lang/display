@@ -218,8 +218,112 @@ function main()
     runner_assert_true(r, len(pkg::layout_report()) > 0, "layout_report non-empty")
     @cfg(feature = "extras")
     runner_assert_eq(r, len(pkg::high_refresh_displays(120.0)) <= len(pkg::displays()), true, "high-refresh subset")
+    @cfg(feature = "extras")
+    runner_assert_eq(r, len(pkg::hdr_displays()) <= len(pkg::displays()), true, "hdr subset")
+    @cfg(feature = "extras")
+    runner_assert_eq(r, len(pkg::wide_gamut_displays()) <= len(pkg::displays()), true, "wide-gamut subset")
+    @cfg(feature = "extras")
+    runner_assert_true(r, len(pkg::mode_report()) > 0, "mode_report non-empty")
 
-    # 8. Native C FFI verification
+    # ═══════════════════════════════════════════════════════════
+    # 8. DisplayMode models, sorting & video modes
+    # ═══════════════════════════════════════════════════════════
+    let m60 = pkg::make_display_mode(1920, 1080, 60000)
+    let m144 = pkg::make_display_mode(1920, 1080, 144000)
+    let m4k = pkg::make_display_mode(3840, 2160, 60000)
+    runner_assert_eq(r, m60.w, 1920, "mode w is 1920")
+    runner_assert_eq(r, m60.refresh_milliHz, 60000, "mode refresh is 60000")
+    runner_assert_eq(r, m60.is_known(), true, "mode is known")
+    runner_assert_eq(r, m60.area(), 2073600, "mode area is 2073600")
+    runner_assert_eq(r, m60.refresh_hz(), 60.0, "mode 60Hz")
+    runner_assert_eq(r, m144.refresh_hz(), 144.0, "mode 144Hz")
+    runner_assert_str_eq(r, m60.resolution(), "1920x1080", "mode resolution")
+    runner_assert_str_eq(r, m60.summary(), "1920x1080 @60Hz", "mode summary")
+    runner_assert_str_eq(r, pkg::make_display_mode(1920, 1080, -1).summary(), "1920x1080", "mode summary unknown Hz")
+    runner_assert_str_eq(r, pkg::empty_display().work_summary(), "unknown", "empty work summary")
+    runner_assert_eq(r, m60.is_valid(), true, "mode is valid")
+    runner_assert_true(r, m60 is pkg::Summarizable, "DisplayMode satisfies Summarizable")
+    runner_assert_true(r, m60 is pkg::Describable, "DisplayMode satisfies Describable")
+    runner_assert_true(r, len(m60.describe()) > 0, "mode describe non-empty")
+
+    let dup_modes = [m60, m144, m60, m4k, m144]
+    let sorted = pkg::sort_modes(dup_modes)
+    runner_assert_eq(r, len(sorted), 5, "sort keeps all entries")
+    let first_sorted: DisplayMode = sorted[0]
+    runner_assert_eq(r, first_sorted.w, 3840, "sort puts 4K first")
+    let second_sorted: DisplayMode = sorted[1]
+    runner_assert_eq(r, second_sorted.refresh_milliHz, 144000, "sort prefers 144Hz on tie")
+    let best = pkg::best_mode(dup_modes)
+    runner_assert_eq(r, best is null, false, "best_mode non-null")
+    let best_mode: DisplayMode = best
+    runner_assert_eq(r, best_mode.w, 3840, "best_mode is 4K")
+    runner_assert_eq(r, pkg::best_mode([]) is null, true, "best_mode empty is null")
+    runner_assert_eq(r, pkg::sort_modes([]) is null, false, "sort empty non-null")
+    runner_assert_eq(r, len(pkg::sort_modes([])), 0, "sort empty is empty")
+
+    runner_assert_str_eq(r, pkg::format_mode(m60), "1920x1080 @60Hz", "format_mode vector")
+    runner_assert_str_eq(r, pkg::format_mode_list([]), "(no modes)", "format_mode_list empty")
+    runner_assert_str_eq(r, pkg::format_mode_list([m60, m144]), "1920x1080 @60Hz\n1920x1080 @144Hz", "format_mode_list two")
+    runner_assert_str_eq(r, pkg::format_mode_list([m60, m144, m4k], 2), "1920x1080 @60Hz\n1920x1080 @144Hz\n+1 more", "format_mode_list cap collapse")
+    runner_assert_str_eq(r, pkg::format_edid(d), "no EDID", "format_edid empty")
+    let edid_d = pkg::make_display_info("DP-1", 0, 0, 2560, 1440, 100, 109, 144000, 32, 1, 0, "", 0, 0, 2560, 1400, "dp", "NVIDIA GeForce RTX 4070", "DELL U2720Q", "DEL", "U2720Q", "1234", -1, 0)
+    runner_assert_str_eq(r, pkg::format_edid(edid_d), "DEL U2720Q #1234", "format_edid vector")
+    runner_assert_eq(r, edid_d.has_edid(), true, "edid present")
+    runner_assert_eq(r, d.has_edid(), false, "plain d has no edid")
+    runner_assert_eq(r, edid_d.has_label(), true, "edid_d has label")
+    runner_assert_eq(r, edid_d.has_gpu(), true, "edid_d has gpu")
+    runner_assert_eq(r, edid_d.has_work_area(), true, "edid_d has work area")
+    runner_assert_str_eq(r, edid_d.work_summary(), "2560x1400 @0,0", "work summary vector")
+    runner_assert_str_eq(r, pkg::format_work_area(edid_d), "2560x1400 @0,0", "format_work_area vector")
+    runner_assert_str_eq(r, pkg::format_work_area(d), "full bounds", "format_work_area unknown")
+    runner_assert_eq(r, pkg::has_work_area(edid_d), true, "has_work_area true")
+    runner_assert_eq(r, pkg::has_edid_info(edid_d), true, "has_edid_info true")
+    let hdr_d = pkg::make_display_info("HDMI-2", 0, 0, 3840, 2160, 200, 163, 120000, 30, 0, 0, "Display P3", 0, 0, -1, -1, "hdmi", "", "", "", "", "", 1, 1)
+    runner_assert_eq(r, hdr_d.is_hdr(), true, "hdr flag set")
+    runner_assert_eq(r, hdr_d.is_wide_gamut(), true, "wide flag set")
+    runner_assert_eq(r, d.is_hdr(), false, "plain d not hdr")
+    runner_assert_true(r, len(pkg::format_display(hdr_d)) > 0, "hdr format non-empty")
+    runner_assert_eq(r, len(pkg::hdr_only([d, hdr_d])), 1, "hdr_only filters")
+    runner_assert_eq(r, len(pkg::wide_gamut_only([d, hdr_d])), 1, "wide filter")
+
+    # Native mode enumeration (headless-safe: 0/empty when unreachable)
+    runner_assert_eq(r, pkg::mode_count(-1), 0, "mode_count negative is 0")
+    runner_assert_eq(r, len(pkg::modes(-1)), 0, "modes negative empty")
+    runner_assert_eq(r, len(pkg::modes(9999)), 0, "modes OOB empty")
+    runner_assert_eq(r, len(pkg::sorted_modes(9999)), 0, "sorted OOB empty")
+    if len(list) > 0
+        runner_assert_true(r, pkg::mode_count(0) >= 1, "attached display has modes")
+        let livemodes = pkg::sorted_modes(0)
+        runner_assert_true(r, len(livemodes) >= 1, "attached sorted modes non-empty")
+        let lm0: DisplayMode = livemodes[0]
+        runner_assert_eq(r, lm0.is_valid(), true, "live mode valid")
+        runner_assert_true(r, len(pkg::format_mode(lm0)) > 0, "live format_mode non-empty")
+        let li = 1
+        while li < len(livemodes)
+            let prev: DisplayMode = livemodes[li - 1]
+            let cur: DisplayMode = livemodes[li]
+            runner_assert_true(r, prev.area() >= cur.area(), "sorted areas non-increasing")
+            li += 1
+        end
+        let live0: DisplayInfo = list[0]
+        runner_assert_true(r, len(live0.work_summary()) > 0, "work summary non-empty")
+        runner_assert_true(r, len(pkg::format_work_area(live0)) > 0, "work format non-empty")
+        runner_assert_true(r, len(pkg::format_edid(live0)) > 0, "edid format non-empty")
+    end
+
+    # ═══════════════════════════════════════════════════════════
+    # 9. Topology signatures (hotplug polling)
+    # ═══════════════════════════════════════════════════════════
+    let sig = pkg::signature()
+    runner_assert_eq(r, pkg::changed_since(sig), false, "fresh signature unchanged")
+    runner_assert_eq(r, pkg::changed_since(sig + "x"), true, "mutated signature changed")
+    if len(list) == 0
+        runner_assert_str_eq(r, sig, "", "headless signature empty")
+    else
+        runner_assert_true(r, len(sig) > 0, "attached signature non-empty")
+    end
+
+    # 10. Native C FFI verification
     let c_sum = pkg::c_add(10, 32)
     runner_assert_eq(r, c_sum, 42, "pkg::c_add executes bundled C code")
 

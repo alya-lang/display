@@ -56,14 +56,90 @@ function parse_display_entry(entry: string)
         bpp: to_int(parts[8]),
         primary: prim,
         orientation: orient,
-        color: parts[11]
+        color: parts[11],
+        work_x: 0,
+        work_y: 0,
+        work_w: -1,
+        work_h: -1,
+        connector: "",
+        gpu: "",
+        label: "",
+        edid_make: "",
+        edid_model: "",
+        edid_serial: "",
+        wide_gamut: -1,
+        hdr: -1
+    }
+end
+
+## Parses one native extra wire entry, or null when malformed.
+##
+## Wire: "work_x|work_y|work_w|work_h|connector|gpu|label|edid_make|edid_model|edid_serial|wide|hdr"
+function parse_extra_entry(entry: string)
+    let parts = split(entry, "|")
+    if len(parts) != 12
+        return null
+    end
+    let wide = to_int(parts[10])
+    if wide != 1 and wide != 0
+        wide = -1
+    end
+    let hdr = to_int(parts[11])
+    if hdr != 1 and hdr != 0
+        hdr = -1
+    end
+    return {
+        "work_x": to_int(parts[0]),
+        "work_y": to_int(parts[1]),
+        "work_w": to_int(parts[2]),
+        "work_h": to_int(parts[3]),
+        "connector": parts[4],
+        "gpu": parts[5],
+        "label": parts[6],
+        "edid_make": parts[7],
+        "edid_model": parts[8],
+        "edid_serial": parts[9],
+        "wide": wide,
+        "hdr": hdr
+    }
+end
+
+## Applies a parsed extra map onto a DisplayInfo record (returns the update).
+function apply_extra(d: DisplayInfo, extra) -> DisplayInfo
+    return DisplayInfo {
+        name: d.name,
+        x: d.x,
+        y: d.y,
+        w: d.w,
+        h: d.h,
+        scale_x100: d.scale_x100,
+        dpi: d.dpi,
+        refresh_milliHz: d.refresh_milliHz,
+        bpp: d.bpp,
+        primary: d.primary,
+        orientation: d.orientation,
+        color: d.color,
+        work_x: extra["work_x"],
+        work_y: extra["work_y"],
+        work_w: extra["work_w"],
+        work_h: extra["work_h"],
+        connector: extra["connector"],
+        gpu: extra["gpu"],
+        label: extra["label"],
+        edid_make: extra["edid_make"],
+        edid_model: extra["edid_model"],
+        edid_serial: extra["edid_serial"],
+        wide_gamut: extra["wide"],
+        hdr: extra["hdr"]
     }
 end
 
 ## Returns display records for every enumerated monitor (possibly empty headless).
 ##
 ## Tolerates native index skew like mounts(): empty or malformed entries
-## (holes from concurrent hotplug) are skipped.
+## (holes from concurrent hotplug) are skipped. Extended data (work area,
+## connector, GPU, EDID, HDR) merges per index when available and stays at
+## unknown sentinels otherwise.
 pub function displays() -> array
     let out = []
     let n = display_count_native()
@@ -73,6 +149,13 @@ pub function displays() -> array
         if len(entry) > 0
             let d = parse_display_entry(entry)
             if d is not null
+                let exraw = str_owned(display_native_extra(i))
+                if len(exraw) > 0
+                    let ex = parse_extra_entry(exraw)
+                    if ex is not null
+                        d = apply_extra(d, ex)
+                    end
+                end
                 out.push(d)
             end
         end
@@ -90,7 +173,18 @@ pub function display_at_index(i: int)
     if len(entry) == 0
         return null
     end
-    return parse_display_entry(entry)
+    let d = parse_display_entry(entry)
+    if d is null
+        return null
+    end
+    let exraw = str_owned(display_native_extra(i))
+    if len(exraw) > 0
+        let ex = parse_extra_entry(exraw)
+        if ex is not null
+            d = apply_extra(d, ex)
+        end
+    end
+    return d
 end
 
 ## Returns 1 when at least one display is reachable, 0 otherwise (headless).
@@ -191,7 +285,11 @@ pub function largest_display()
     if best_idx < 0
         return null
     end
-    return list[best_idx]
+    # Typed local on purpose: returning list[best_idx] directly reads back
+    # as null on some targets (observed on Xvfb); the annotation pins the
+    # struct type across the return boundary.
+    let best: DisplayInfo = list[best_idx]
+    return best
 end
 
 ## Returns the sum of all display pixel areas (0 when headless).
@@ -246,4 +344,178 @@ pub function virtual_desktop() -> DisplayLayout
         i += 1
     end
     return make_display_layout(min_x, min_y, max_x - min_x, max_y - min_y, len(list), pname)
+end
+
+# ───────────────────────────────────────────────────────────────
+# Video Modes
+# ───────────────────────────────────────────────────────────────
+
+## Parses one native mode wire entry ("w|h|refresh_milliHz"), or null when malformed.
+function parse_mode_entry(entry: string)
+    let parts = split(entry, "|")
+    if len(parts) != 3
+        return null
+    end
+    let w = to_int(parts[0])
+    let h = to_int(parts[1])
+    if w <= 0 or h <= 0
+        return null
+    end
+    let r = to_int(parts[2])
+    if r != -1 and r <= 0
+        r = -1
+    end
+    return make_display_mode(w, h, r)
+end
+
+## Returns the raw native mode count for enumeration index i (0 when unknown).
+pub function mode_count_at(i: int) -> int
+    return len(display_modes_at(i))
+end
+
+## Returns the video modes for enumeration index i, deduped and sorted.
+##
+## Sort order is largest area first, then highest refresh. Pixel-format and
+## orientation duplicates from the native list collapse into one entry.
+## Backends that cannot enumerate report the current mode as one entry.
+## One native enumeration per call by design.
+pub function display_modes_at(i: int) -> array
+    let raw = []
+    if i < 0
+        return raw
+    end
+    let blob = str_owned(display_native_modes_all(i))
+    if len(blob) == 0
+        return raw
+    end
+    let lines = split(blob, "\n")
+    let k = 0
+    while k < len(lines)
+        let line = trim(lines[k])
+        if len(line) > 0
+            let m = parse_mode_entry(line)
+            if m is not null
+                raw.push(m)
+            end
+        end
+        k += 1
+    end
+    return dedupe_modes(raw)
+end
+
+## Dedupes exact (w,h,refresh) triplets, keeping first-seen order.
+function dedupe_modes(list: array) -> array
+    let out = []
+    if list is null
+        return out
+    end
+    for m in list
+        let cand: DisplayMode = m
+        let dup = false
+        for e in out
+            let have: DisplayMode = e
+            if have.w == cand.w and have.h == cand.h and have.refresh_milliHz == cand.refresh_milliHz
+                dup = true
+            end
+        end
+        if dup == false
+            out.push(cand)
+        end
+    end
+    return out
+end
+
+## Sorts modes largest-area first (ties: highest refresh first).
+##
+## Selection sort is plenty: native lists stay in the low hundreds.
+pub function sort_modes(list: array) -> array
+    let work = []
+    if list is null
+        return work
+    end
+    for m in list
+        work.push(m)
+    end
+    let i = 0
+    while i < len(work)
+        let best = i
+        let j = i + 1
+        while j < len(work)
+            let a: DisplayMode = work[j]
+            let b: DisplayMode = work[best]
+            let swap = false
+            if a.area() > b.area()
+                swap = true
+            elif a.area() == b.area() and a.refresh_milliHz > b.refresh_milliHz
+                swap = true
+            end
+            if swap == true
+                best = j
+            end
+            j += 1
+        end
+        if best != i
+            let tmp = work[i]
+            work[i] = work[best]
+            work[best] = tmp
+        end
+        i += 1
+    end
+    return work
+end
+
+## Returns the video modes for enumeration index i, deduped and sorted.
+pub function sorted_modes_at(i: int) -> array
+    return sort_modes(display_modes_at(i))
+end
+
+## Returns the best mode of a list (largest area, tie: highest refresh).
+##
+## Returns null for empty lists.
+pub function best_mode(modes: array)
+    if modes is null or len(modes) == 0
+        return null
+    end
+    let ordered = sort_modes(modes)
+    return ordered[0]
+end
+
+# ───────────────────────────────────────────────────────────────
+# Topology Signatures (hotplug/change polling)
+# ───────────────────────────────────────────────────────────────
+
+## Returns a topology signature string for the current enumeration.
+##
+## The signature joins per-display `name|x|y|w|h|scale|refresh` cells with
+## `;` (empty string when headless). Poll it on an interval and compare with
+## `topology_changed()` to detect hotplug, mode, scale, or refresh changes
+## without keeping native handles open.
+pub function topology_signature() -> string
+    let cells = []
+    let list = displays()
+    for d in list
+        let info: DisplayInfo = d
+        cells.push("{info.name}|{info.x}|{info.y}|{info.w}|{info.h}|{info.scale_x100}|{info.refresh_milliHz}")
+    end
+    if len(cells) == 0
+        return ""
+    end
+    let s = cells[0]
+    let i = 1
+    while i < len(cells)
+        s += ";" + cells[i]
+        i += 1
+    end
+    return s
+end
+
+## Returns 1 when the topology differs from a previous signature, 0 otherwise.
+##
+## Headless-to-headless (both "") reports 0 (no change).
+pub function topology_changed(since: string) -> bool
+    let now = topology_signature()
+    if now == since
+        return false
+    end
+    return true
 end

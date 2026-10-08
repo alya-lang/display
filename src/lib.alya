@@ -94,6 +94,31 @@ pub function layout() -> DisplayLayout
     return virtual_desktop()
 end
 
+## Returns the raw native mode count for enumeration index i (0 when unknown).
+pub function mode_count(i: int) -> int
+    return mode_count_at(i)
+end
+
+## Returns video modes for enumeration index i, deduped (native order).
+pub function modes(i: int) -> array
+    return display_modes_at(i)
+end
+
+## Returns video modes for enumeration index i, deduped and sorted.
+pub function sorted_modes(i: int) -> array
+    return sorted_modes_at(i)
+end
+
+## Returns a topology signature string for change polling ("" when headless).
+pub function signature() -> string
+    return topology_signature()
+end
+
+## Returns 1 when the topology differs from a previous signature, 0 otherwise.
+pub function changed_since(since: string) -> bool
+    return topology_changed(since)
+end
+
 # ───────────────────────────────────────────────────────────────
 # Metrics Facade (pure, headless-safe)
 # ───────────────────────────────────────────────────────────────
@@ -179,6 +204,24 @@ end
 ## Fallback stub for `layout_report` when the `extras` feature is disabled.
 @cfg(not(feature = "extras"))
 pub function layout_report() -> string
+    throw "extras feature is disabled (rebuild with default features or --features extras)"
+end
+
+## Fallback stub for `hdr_displays` when the `extras` feature is disabled.
+@cfg(not(feature = "extras"))
+pub function hdr_displays() -> array
+    throw "extras feature is disabled (rebuild with default features or --features extras)"
+end
+
+## Fallback stub for `wide_gamut_displays` when the `extras` feature is disabled.
+@cfg(not(feature = "extras"))
+pub function wide_gamut_displays() -> array
+    throw "extras feature is disabled (rebuild with default features or --features extras)"
+end
+
+## Fallback stub for `mode_report` when the `extras` feature is disabled.
+@cfg(not(feature = "extras"))
+pub function mode_report() -> string
     throw "extras feature is disabled (rebuild with default features or --features extras)"
 end
 # alya-lint: enable unused-param

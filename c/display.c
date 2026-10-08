@@ -19,4 +19,14 @@ const char *display_native_at(int index) {
     (void)index;
     return "";
 }
+
+const char *display_native_extra(int index) {
+    (void)index;
+    return "";
+}
+
+const char *display_native_modes_all(int disp) {
+    (void)disp;
+    return "";
+}
 #endif

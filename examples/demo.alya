@@ -83,8 +83,43 @@ function main()
     say "Scaling: " + pkg::scaling_report()
     @cfg(feature = "extras")
     say "Layout:  " + pkg::layout_report()
+    @cfg(feature = "extras")
+    say "Modes:   " + pkg::mode_report()
     @cfg(not(feature = "extras"))
     say "Extras: (disabled — rebuild with --features extras)"
+    say ""
+
+    # ───────────────────────────────────────────────────────────
+    # 6. Video modes & topology watch
+    # ───────────────────────────────────────────────────────────
+    say "--- 6. Modes & Topology ---"
+    let modes = pkg::sorted_modes(0)
+    say "Modes(0): " + str(len(modes))
+    if len(modes) > 0
+        say pkg::format_mode_list(modes, 5)
+    end
+    let sig = pkg::signature()
+    say "Signature: " + sig
+    say "Changed:   " + str(pkg::changed_since(sig))
+    say ""
+
+    # ───────────────────────────────────────────────────────────
+    # 7. Extended identity (EDID / GPU / work area)
+    # ───────────────────────────────────────────────────────────
+    say "--- 7. Extended Identity ---"
+    if len(list) > 0
+        let first: DisplayInfo = list[0]
+        say "Label:   " + first.label
+        say "GPU:     " + first.gpu
+        say "EDID:    " + pkg::format_edid(first)
+        say "Work:    " + pkg::format_work_area(first)
+        say "HDR:     " + str(first.is_hdr())
+    else
+        say "(no live displays — synthetic record shown)"
+        let sm = pkg::make_display_info("DP-1", 0, 0, 2560, 1440, 100, 109, 144000, 32, 1, 0, "", 0, 0, 2560, 1400, "dp", "amdgpu", "DELL U2720Q", "DEL", "U2720Q", "1234", -1, 0)
+        say "Label:   " + sm.label
+        say "EDID:    " + pkg::format_edid(sm)
+    end
     say ""
 
     say "Done!"

@@ -69,6 +69,16 @@ end
 ## - `primary`: 1 for the primary display, 0 otherwise.
 ## - `orientation`: Panel rotation (0/90/180/270).
 ## - `color`: OS color profile label (`"sRGB"`, `"Display P3"`, "" unknown).
+## - `work_x`, `work_y`: Usable-area origin in virtual-desktop pixels.
+## - `work_w`, `work_h`: Usable-area size (taskbar/dock excluded, `<= 0` unknown).
+## - `connector`: Physical connector (`"internal"`, `"hdmi"`, `"dp"`, `"edp"`, `"dvi"`, `"vga"`, "" unknown).
+## - `gpu`: Adapter/driver label (`"NVIDIA GeForce RTX 4070"`, `"amdgpu"`, "" unknown).
+## - `label`: Friendly monitor name (`"DELL U2720Q"`, "" unknown).
+## - `edid_make`: EDID manufacturer trigraph (`"SAM"`, "" unknown).
+## - `edid_model`: EDID monitor name (`"U2720Q"`, "" unknown).
+## - `edid_serial`: EDID serial text/number ("" unknown).
+## - `wide_gamut`: 1 wide-gamut (P3), 0 standard sRGB, -1 unknown.
+## - `hdr`: 1 HDR active/capable, 0 SDR-only, -1 unknown.
 pub struct DisplayInfo
     name: string,
     x: int,
@@ -81,7 +91,19 @@ pub struct DisplayInfo
     bpp: int,
     primary: int,
     orientation: int,
-    color: string
+    color: string,
+    work_x: int,
+    work_y: int,
+    work_w: int,
+    work_h: int,
+    connector: string,
+    gpu: string,
+    label: string,
+    edid_make: string,
+    edid_model: string,
+    edid_serial: string,
+    wide_gamut: int,
+    hdr: int
 end
 
 ## Virtual-desktop bounding box over all displays.
@@ -100,6 +122,21 @@ pub struct DisplayLayout
     h: int,
     count: int,
     primary_name: string
+end
+
+## Single video mode (resolution + refresh triplet).
+##
+## Returned by `display_modes_at()` after dedupe/sort; the current mode is
+## not flagged (compare against the owning `DisplayInfo.refresh_milliHz`).
+##
+## ### Fields
+## - `w`: Width in device pixels (> 0).
+## - `h`: Height in device pixels (> 0).
+## - `refresh_milliHz`: Refresh in milli-Hz (60000 = 60Hz, -1 unknown).
+pub struct DisplayMode
+    w: int,
+    h: int,
+    refresh_milliHz: int
 end
 
 # ───────────────────────────────────────────────────────────────
@@ -134,6 +171,14 @@ end
 ## - `primary`: 1 for primary, 0 otherwise. Defaults to `0`.
 ## - `orientation`: Panel rotation. Defaults to `0`.
 ## - `color`: Color profile label. Defaults to `""`.
+## - `work_x`, `work_y`: Usable-area origin. Defaults to `0`.
+## - `work_w`, `work_h`: Usable-area size (`<= 0` unknown). Defaults to `-1`.
+## - `connector`: Physical connector. Defaults to `""`.
+## - `gpu`: Adapter/driver label. Defaults to `""`.
+## - `label`: Friendly monitor name. Defaults to `""`.
+## - `edid_make`, `edid_model`, `edid_serial`: EDID identity. Defaults to `""`.
+## - `wide_gamut`: 1 wide-gamut, 0 sRGB, -1 unknown. Defaults to `-1`.
+## - `hdr`: 1 HDR, 0 SDR-only, -1 unknown. Defaults to `-1`.
 ##
 ## ### Returns
 ## A fully initialized `DisplayInfo` instance.
@@ -142,7 +187,7 @@ end
 ## ```alya
 ## let d = make_display_info("HDMI-1", 0, 0, 1920, 1080, 100, 96, 60000, 32, 1, 0, "sRGB")
 ## ```
-pub function make_display_info(name: string, x: int = 0, y: int = 0, w: int = 0, h: int = 0, scale_x100: int = 100, dpi: int = -1, refresh_milliHz: int = -1, bpp: int = -1, primary: int = 0, orientation: int = 0, color: string = "") -> DisplayInfo
+pub function make_display_info(name: string, x: int = 0, y: int = 0, w: int = 0, h: int = 0, scale_x100: int = 100, dpi: int = -1, refresh_milliHz: int = -1, bpp: int = -1, primary: int = 0, orientation: int = 0, color: string = "", work_x: int = 0, work_y: int = 0, work_w: int = -1, work_h: int = -1, connector: string = "", gpu: string = "", label: string = "", edid_make: string = "", edid_model: string = "", edid_serial: string = "", wide_gamut: int = -1, hdr: int = -1) -> DisplayInfo
     return DisplayInfo {
         name: sanitize_text_internal(name, "Display"),
         x: x,
@@ -155,7 +200,19 @@ pub function make_display_info(name: string, x: int = 0, y: int = 0, w: int = 0,
         bpp: bpp,
         primary: primary,
         orientation: orientation,
-        color: color
+        color: color,
+        work_x: work_x,
+        work_y: work_y,
+        work_w: work_w,
+        work_h: work_h,
+        connector: connector,
+        gpu: gpu,
+        label: label,
+        edid_make: edid_make,
+        edid_model: edid_model,
+        edid_serial: edid_serial,
+        wide_gamut: wide_gamut,
+        hdr: hdr
     }
 end
 
@@ -175,7 +232,19 @@ pub function empty_display() -> DisplayInfo
         bpp: -1,
         primary: 0,
         orientation: 0,
-        color: ""
+        color: "",
+        work_x: 0,
+        work_y: 0,
+        work_w: -1,
+        work_h: -1,
+        connector: "",
+        gpu: "",
+        label: "",
+        edid_make: "",
+        edid_model: "",
+        edid_serial: "",
+        wide_gamut: -1,
+        hdr: -1
     }
 end
 
@@ -188,6 +257,28 @@ pub function make_display_layout(x: int = 0, y: int = 0, w: int = 0, h: int = 0,
         h: h,
         count: count,
         primary_name: primary_name
+    }
+end
+
+## Builds a `DisplayMode` record from explicit values (testing/snapshots).
+##
+## ### Parameters
+## - `w`: Width in device pixels.
+## - `h`: Height in device pixels.
+## - `refresh_milliHz`: Refresh in milli-Hz (-1 unknown). Defaults to `-1`.
+##
+## ### Returns
+## A fully initialized `DisplayMode` instance.
+##
+## ### Examples
+## ```alya
+## let m = make_display_mode(1920, 1080, 60000)
+## ```
+pub function make_display_mode(w: int = 0, h: int = 0, refresh_milliHz: int = -1) -> DisplayMode
+    return DisplayMode {
+        w: w,
+        h: h,
+        refresh_milliHz: refresh_milliHz
     }
 end
 
@@ -296,6 +387,83 @@ pub function DisplayInfo.is_valid(self: DisplayInfo) -> bool
     return true
 end
 
+## Returns 1 when a usable area is known (`work_w > 0` and `work_h > 0`).
+pub function DisplayInfo.has_work_area(self: DisplayInfo) -> bool
+    if self.work_w > 0 and self.work_h > 0
+        return true
+    end
+    return false
+end
+
+## Returns the usable-area string (`"1840x1010 @0,40"`, `"unknown"` when none).
+pub function DisplayInfo.work_summary(self: DisplayInfo) -> string
+    if self.has_work_area() == false
+        return "unknown"
+    end
+    return "{self.work_w}x{self.work_h} @{self.work_x},{self.work_y}"
+end
+
+## Returns 1 when HDR is active/capable, 0 otherwise (unknown counts as 0).
+pub function DisplayInfo.is_hdr(self: DisplayInfo) -> bool
+    if self.hdr == true
+        return true
+    end
+    return false
+end
+
+## Returns 1 when the panel reports wide-gamut, 0 otherwise (unknown is 0).
+pub function DisplayInfo.is_wide_gamut(self: DisplayInfo) -> bool
+    if self.wide_gamut == true
+        return true
+    end
+    return false
+end
+
+## Returns 1 when any EDID identity datum is present, 0 otherwise.
+pub function DisplayInfo.has_edid(self: DisplayInfo) -> bool
+    if len(self.edid_make) > 0 or len(self.edid_model) > 0 or len(self.edid_serial) > 0
+        return true
+    end
+    return false
+end
+
+## Returns the EDID identity label (`"SAM U2720Q #1234"`, `""` when none).
+pub function DisplayInfo.edid_label(self: DisplayInfo) -> string
+    if self.has_edid() == false
+        return ""
+    end
+    let s = self.edid_make
+    if len(self.edid_model) > 0
+        if len(s) > 0
+            s += " "
+        end
+        s += self.edid_model
+    end
+    if len(self.edid_serial) > 0
+        if len(s) > 0
+            s += " #"
+        end
+        s += self.edid_serial
+    end
+    return s
+end
+
+## Returns 1 when a friendly monitor name is known, 0 otherwise.
+pub function DisplayInfo.has_label(self: DisplayInfo) -> bool
+    if self.label is null or len(self.label) == 0
+        return false
+    end
+    return true
+end
+
+## Returns 1 when adapter/driver info is known, 0 otherwise.
+pub function DisplayInfo.has_gpu(self: DisplayInfo) -> bool
+    if self.gpu is null or len(self.gpu) == 0
+        return false
+    end
+    return true
+end
+
 # ───────────────────────────────────────────────────────────────
 # Struct Methods: DisplayLayout
 # ───────────────────────────────────────────────────────────────
@@ -348,4 +516,78 @@ pub function DisplayLayout.is_valid(self: DisplayLayout) -> bool
         return true
     end
     return self.is_known()
+end
+
+# ───────────────────────────────────────────────────────────────
+# Struct Methods: DisplayMode
+# ───────────────────────────────────────────────────────────────
+
+## Returns 1 when this mode has a known resolution (`w > 0` and `h > 0`).
+pub function DisplayMode.is_known(self: DisplayMode) -> bool
+    if self.w > 0 and self.h > 0
+        return true
+    end
+    return false
+end
+
+## Returns the pixel area (`w * h`), or 0 for unknown modes.
+pub function DisplayMode.area(self: DisplayMode) -> int
+    if self.w <= 0 or self.h <= 0
+        return 0
+    end
+    return self.w * self.h
+end
+
+## Returns the refresh rate in Hz (60.0, 144.0, -1.0 unknown).
+pub function DisplayMode.refresh_hz(self: DisplayMode) -> float
+    if self.refresh_milliHz <= 0
+        return -1.0
+    end
+    return self.refresh_milliHz / 1000.0
+end
+
+## Returns the mode string (`"1920x1080"`, `"unknown"` when not known).
+pub function DisplayMode.resolution(self: DisplayMode) -> string
+    if self.is_known() == false
+        return "unknown"
+    end
+    return "{self.w}x{self.h}"
+end
+
+## Returns a one-line summary (`"1920x1080 @60Hz"`, `"1920x1080"` when Hz unknown).
+##
+## Implicitly satisfies the `Summarizable` interface.
+pub function DisplayMode.summary(self: DisplayMode) -> string
+    if self.is_known() == false
+        return "unknown"
+    end
+    if self.refresh_milliHz > 0
+        let whole = self.refresh_milliHz / 1000
+        let rest = self.refresh_milliHz - whole * 1000
+        if rest == 0
+            return "{self.resolution()} @{whole}Hz"
+        end
+        return "{self.resolution()} @{self.refresh_hz()}Hz"
+    end
+    return self.resolution()
+end
+
+## Returns a detailed description of this mode.
+##
+## Implicitly satisfies the `Describable` interface.
+pub function DisplayMode.describe(self: DisplayMode) -> string
+    return "[Mode] {self.resolution()} refresh={self.refresh_milliHz}"
+end
+
+## Returns 1 when this mode is usable (known resolution, sane refresh).
+##
+## Implicitly satisfies the `Describable` interface.
+pub function DisplayMode.is_valid(self: DisplayMode) -> bool
+    if self.is_known() == false
+        return false
+    end
+    if self.refresh_milliHz != -1 and self.refresh_milliHz <= 0
+        return false
+    end
+    return true
 end

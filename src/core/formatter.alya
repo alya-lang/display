@@ -83,6 +83,17 @@ pub function format_display(d: DisplayInfo) -> string
     if len(d.color) > 0
         s += " [{d.color}]"
     end
+    if len(d.connector) > 0
+        s += " <{d.connector}>"
+    end
+    if d.is_hdr() == true
+        s += " [HDR]"
+    elif d.is_wide_gamut() == true
+        s += " [wide-gamut]"
+    end
+    if d.has_label() == true
+        s += " \"{d.label}\""
+    end
     if d.is_primary() == true
         s += " [primary]"
     end
@@ -141,4 +152,54 @@ pub function format_report(list: array, layout: DisplayLayout) -> string
     end
     s += "\nLayout:   {layout.summary()}"
     return s
+end
+
+## Formats one video mode (`"1920x1080 @60Hz"`, `"1920x1080"` when Hz unknown).
+pub function format_mode(m: DisplayMode) -> string
+    return m.summary()
+end
+
+## Formats a mode list, one per line, capped at max_n entries (`"(no modes)"` when empty).
+##
+## Beyond the cap the tail collapses into a `"+N more"` line so huge EDID
+## mode tables stay readable.
+pub function format_mode_list(modes: array, max_n: int = 8) -> string
+    if modes is null or len(modes) == 0
+        return "(no modes)"
+    end
+    let cap = max_n
+    if cap <= 0
+        cap = 8
+    end
+    let s = ""
+    let i = 0
+    while i < len(modes) and i < cap
+        if i > 0
+            s += "\n"
+        end
+        let m: DisplayMode = modes[i]
+        s += format_mode(m)
+        i += 1
+    end
+    if len(modes) > cap
+        s += "\n+{len(modes) - cap} more"
+    end
+    return s
+end
+
+## Formats EDID identity (`"SAM U2720Q #1234"`, `"no EDID"` when absent).
+pub function format_edid(d: DisplayInfo) -> string
+    let lbl = d.edid_label()
+    if len(lbl) == 0
+        return "no EDID"
+    end
+    return lbl
+end
+
+## Formats the usable area (`"1840x1010 @0,40"`, `"full bounds"` when unknown).
+pub function format_work_area(d: DisplayInfo) -> string
+    if d.has_work_area() == false
+        return "full bounds"
+    end
+    return d.work_summary()
 end

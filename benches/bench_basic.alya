@@ -79,6 +79,26 @@ function main()
     end
     bench_stop(runner, "snapshot/layout 5k calls")
 
+    # Bench 8: mode sort + format over 12-item list — 10k iterations
+    let modelist = [pkg::make_display_mode(1920, 1080, 60000), pkg::make_display_mode(2560, 1440, 144000), pkg::make_display_mode(3840, 2160, 60000), pkg::make_display_mode(1280, 720, 60000), pkg::make_display_mode(1920, 1080, 144000), pkg::make_display_mode(3840, 2160, 120000), pkg::make_display_mode(1600, 900, 60000), pkg::make_display_mode(2560, 1440, 60000), pkg::make_display_mode(1920, 1200, 60000), pkg::make_display_mode(3440, 1440, 100000), pkg::make_display_mode(1920, 1080, 240000), pkg::make_display_mode(7680, 4320, 60000)]
+    bench_start(runner, 10000)
+    let b = 0
+    while b < 10000
+        pkg::sort_modes(modelist)
+        b += 1
+    end
+    bench_stop(runner, "sort_modes 12-item 10k calls")
+
+    # Bench 9: native mode enumeration + topology signature — 20 iterations
+    bench_start(runner, 20)
+    let g = 0
+    while g < 20
+        pkg::modes(0)
+        pkg::signature()
+        g += 1
+    end
+    bench_stop(runner, "modes(0)+signature 20 calls")
+
     bench_summary(runner)
 end
 

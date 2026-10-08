@@ -77,3 +77,39 @@ pub function layout_report() -> string
     end
     return "{layout.summary()} | primary {pname} | {total_pixels()} px total"
 end
+
+## Returns HDR panels in enumeration order.
+##
+## Only available when the `extras` feature is active (default-on).
+@cfg(feature = "extras")
+pub function hdr_displays() -> array
+    return hdr_only(displays())
+end
+
+## Returns wide-gamut (P3) panels in enumeration order.
+##
+## Only available when the `extras` feature is active (default-on).
+@cfg(feature = "extras")
+pub function wide_gamut_displays() -> array
+    return wide_gamut_only(displays())
+end
+
+## Returns a one-line mode report for the first display's top modes.
+##
+## Headless-safe: `"no displays (headless)"` when nothing is reachable,
+## `"no modes"` when the backend cannot enumerate.
+## Only available when the `extras` feature is active (default-on).
+@cfg(feature = "extras")
+pub function mode_report() -> string
+    let list = displays()
+    if len(list) == 0
+        return "no displays (headless)"
+    end
+    let first: DisplayInfo = list[0]
+    let modes = sorted_modes_at(0)
+    if len(modes) == 0
+        return "{first.name}: no modes"
+    end
+    let top: DisplayMode = modes[0]
+    return "{first.name}: {len(modes)} modes, best {top.summary()}"
+end

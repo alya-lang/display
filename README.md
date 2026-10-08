@@ -13,9 +13,15 @@ Cross-platform display enumeration: monitors, resolution, DPI, scale, refresh ra
 
 - 🖥️ **Display Enumeration**: Monitor count, per-display records, primary detection, and name lookup on Windows, macOS, and Linux
 - 📐 **Resolution & Geometry**: Device-pixel modes, virtual-desktop origins (negative-aware), bounding-box union, and total pixel counts
-- 🔍 **DPI & Scale/Zoom**: Per-monitor DPI, scale percent (`100` = 1.00x, `200` = Retina), effective logical sizes, and HiDPI classification
+- 🔍 **DPI & Scale/Zoom**: Per-monitor DPI, scale percent (`100` = 1.00x, `200` = Retina), effective logical sizes, and HiDPI classification — including fractional Wayland scale via xdg-output
 - ⚡ **Refresh & Color Depth**: Milli-Hz refresh rates, bits-per-pixel, panel orientation (0/90/180/270), and OS color profile labels
-- 🎨 **Color Profiles**: ICM filename on Windows, color-space label on macOS (`sRGB`, `Display P3`), honest `""` when unavailable
+- 🎞️ **Video Mode Lists**: Every known mode per display (`modes()`), deduped and sorted largest-first, from EnumDisplaySettings / CGDisplayCopyAllDisplayModes / RandR / zwlr-output-management
+- 🪟 **Work Area**: Taskbar/Dock-excluded usable rectangles (per-monitor `rcWork`/`visibleFrame`, desktop `_NET_WORKAREA` fallback)
+- 🔌 **Connectors, GPU & EDID**: Physical connector (`hdmi`/`dp`/`edp`/`internal`/…), adapter/driver label, friendly monitor name, and EDID make/model/serial
+- 🌈 **HDR & Wide Gamut**: HDR active/capable flags (DisplayConfig advanced color, NSScreen EDR headroom) and P3 wide-gamut detection
+- 🐧 **Native Wayland**: Raw-protocol enumerator (wl_output + xdg-output, zwlr-output-management on wlroots) preferred over XWayland shadows; XRandR + X-screen fallback preserved
+- 📡 **Hotplug Polling**: Topology signatures (`signature()` / `changed_since()`) for connect/disconnect/mode/scale change detection
+- 🎨 **Color Profiles**: ICM filename on Windows, color-space label on macOS (`sRGB`, `Display P3`), ICC description on X11, honest `""` when unavailable
 - 🧮 **Derived Metrics**: Effective sizes, physical inches, portrait/HiDPI/high-refresh filters, and max DPI/Hz queries (pure, headless-safe)
 - 🛋️ **Headless-Safe**: `0` / `[]` / `null` on CI, Docker, and SSH — live assertions tolerate zero displays, synthetic vectors cover the rest
 - 🧩 **Modular Architecture**: Layered multi-module design with a clean public facade (`src/lib.alya`) and canonical models (`src/types.alya`)
@@ -35,21 +41,21 @@ display/
 ├── .vscode/                # VS Code workspace settings, DAP launch configurations & tasks
 ├── alya.toml               # Package manifest with dependencies, [features] and [build]
 ├── c/                      # Native C sources for zero-dependency FFI packages
-│   ├── display.h           # Shared native declarations (count/at wire contract)
+│   ├── display.h           # Shared native declarations (count/at/extra/modes wire contracts)
 │   ├── display.c           # Common engine (smoke test + unknown-target stubs)
-│   ├── win32_display.c     # Windows EnumDisplayMonitors/DPI/ICM backend
-│   ├── cocoa_display.c     # macOS CoreGraphics backend (bounds/mode/DPI/color)
-│   └── linux_display.c     # Linux X11 + dlopen(XRandR) backend with screen fallback
+│   ├── win32_display.c     # Windows EnumDisplayMonitors/DPI/ICM/modes/DisplayConfig backend
+│   ├── cocoa_display.c     # macOS CoreGraphics + NSScreen + IOKit backend (modes/EDID/HDR)
+│   └── linux_display.c     # Linux Wayland-native + X11/XRandR backend (EDID/ICC/work area)
 ├── src/
-│   ├── lib.alya            # Public API facade (enumeration, metrics, snapshots)
-│   ├── types.alya          # Data models (DisplayInfo, DisplayLayout, enums, methods)
+│   ├── lib.alya            # Public API facade (enumeration, metrics, modes, snapshots)
+│   ├── types.alya          # Data models (DisplayInfo, DisplayLayout, DisplayMode, enums, methods)
 │   ├── ffi.alya            # Native extern "C" declarations
-│   ├── display.alya        # Enumeration, wire parsing, primary/layout queries
+│   ├── display.alya        # Enumeration, wire parsing, modes, topology signatures
 │   ├── metrics.alya        # Derived metrics (effective size, filters, maxima)
 │   └── core/               # Subdirectory module hierarchy
 │       ├── strutil.alya    # FFI string ownership helper (str_owned)
-│       ├── formatter.alya  # Scale/DPI/refresh/snapshot formatters
-│       └── extras.alya     # Feature-gated analytics (HiDPI, scaling, layout reports)
+│       ├── formatter.alya  # Scale/DPI/refresh/mode/snapshot formatters
+│       └── extras.alya     # Feature-gated analytics (HiDPI, HDR, scaling, layout, mode reports)
 ├── examples/
 │   └── demo.alya           # Runnable walkthrough of all package capabilities
 ├── tests/
@@ -83,7 +89,7 @@ alya install
 
 | Feature | Default | Description |
 |:---|:---:|:---|
-| `extras` | ✅ | Advanced analytics (`hidpi_displays`, `portrait_displays`, `high_refresh_displays`, `scaling_report`, `layout_report`). |
+| `extras` | ✅ | Advanced analytics (`hidpi_displays`, `portrait_displays`, `high_refresh_displays`, `hdr_displays`, `wide_gamut_displays`, `scaling_report`, `layout_report`, `mode_report`). |
 
 `summary()` and `details()` work without any feature. Enumeration, metrics, and formatters always work.
 
@@ -119,6 +125,11 @@ function main()
     # 3. Synthetic record (works everywhere)
     let hd = pkg::make_display_info("HDMI-1", 0, 0, 1920, 1080, 100, 96, 60000, 32, 1, 0, "sRGB")
     say f"Demo:    {pkg::format_display(hd)}"
+
+    # 4. Video modes + topology watch
+    say f"Modes:   {len(pkg::sorted_modes(0))} known for display 0"
+    let sig = pkg::signature()
+    say f"Changed: {pkg::changed_since(sig)}"
 end
 
 main()
@@ -143,6 +154,13 @@ main()
 | `largest()` | `pub function` | Largest display by pixel area (null when none). |
 | `total_px()` | `pub function` | Sum of all display pixel areas (0 when headless). |
 | `layout()` | `pub function` | Virtual-desktop bounding box over all displays. |
+| `mode_count(i)` | `pub function` | Raw native mode count for enumeration index `i` (0 when unknown). |
+| `modes(i)` | `pub function` | Video modes for index `i`, deduped (native order). |
+| `sorted_modes(i)` | `pub function` | Video modes for index `i`, deduped and sorted (largest first). |
+| `best_mode(modes)` | `pub function` | Best mode of a list (largest area, tie: highest refresh; null when empty). |
+| `sort_modes(list)` | `pub function` | Sorts modes largest-area first (ties: highest refresh). |
+| `signature()` | `pub function` | Topology signature string for change polling ("" when headless). |
+| `changed_since(sig)` | `pub function` | 1 when the topology differs from `sig`, 0 otherwise. |
 | `effective(d)` | `pub function` | Effective logical size `[w, h]` after scale division. |
 | `max_hz(list)` | `pub function` | Highest refresh rate in Hz (-1.0 when none known). |
 | `max_display_dpi(list)` | `pub function` | Highest DPI in the list (-1 when none known). |
@@ -150,8 +168,12 @@ main()
 | `has_dpi(d)` | `pub function` | 1 when the display reports a known DPI. |
 | `has_refresh(d)` | `pub function` | 1 when the display reports a known refresh rate. |
 | `has_color_profile(d)` | `pub function` | 1 when the display reports a color profile label. |
+| `has_work_area(d)` | `pub function` | 1 when a usable area is known. |
+| `has_edid_info(d)` | `pub function` | 1 when EDID identity is present. |
 | `portrait_only(list)` | `pub function` | Filters to portrait panels (90/270 degrees). |
 | `hidpi_only(list)` | `pub function` | Filters to HiDPI panels (scale >= 150%). |
+| `hdr_only(list)` | `pub function` | Filters to HDR panels. |
+| `wide_gamut_only(list)` | `pub function` | Filters to wide-gamut (P3) panels. |
 | `refresh_at_least(list, min_hz)` | `pub function` | Filters to panels at or above `min_hz`. |
 | `max_refresh_hz(list)` | `pub function` | Highest refresh rate in Hz (-1.0 when none known). |
 | `max_dpi(list)` | `pub function` | Highest DPI in the list (-1 when none known). |
@@ -165,16 +187,23 @@ main()
 | `format_layout(layout)` | `pub function` | Formats a virtual-desktop layout summary. |
 | `format_snapshot(list)` | `pub function` | Full one-line snapshot over a display list. |
 | `format_report(list, layout)` | `pub function` | Multi-line report (per display + layout line). |
+| `format_mode(m)` | `pub function` | One mode overview (`"1920x1080 @60Hz"`). |
+| `format_mode_list(modes, max_n)` | `pub function` | One mode per line, capped (`"+N more"` tail). |
+| `format_edid(d)` | `pub function` | EDID identity (`"SAM U2720Q #1234"`, `"no EDID"`). |
+| `format_work_area(d)` | `pub function` | Usable area (`"1840x1010 @0,40"`, `"full bounds"`). |
 | `make_display_info(...)` | `pub function` | Full constructor for `DisplayInfo` (testing/snapshots). |
 | `empty_display()` | `pub function` | Null-object unknown `DisplayInfo` record. |
 | `make_display_layout(...)` | `pub function` | Constructor for `DisplayLayout`. |
 | `hidpi_displays()` | `pub function` (`extras` feature, default-on) | HiDPI displays in enumeration order. |
+| `hdr_displays()` | `pub function` (`extras` feature, default-on) | HDR panels in enumeration order. |
+| `wide_gamut_displays()` | `pub function` (`extras` feature, default-on) | Wide-gamut (P3) panels in enumeration order. |
 | `portrait_displays()` | `pub function` (`extras` feature, default-on) | Portrait displays in enumeration order. |
 | `high_refresh_displays(min_hz)` | `pub function` (`extras` feature, default-on) | Displays at or above `min_hz` (default 120Hz). |
 | `scaling_report()` | `pub function` (`extras` feature, default-on) | One-line scaling report (HiDPI share, max scale/DPI). |
 | `layout_report()` | `pub function` (`extras` feature, default-on) | One-line layout diagnostic (desktop + primary + px). |
+| `mode_report()` | `pub function` (`extras` feature, default-on) | One-line mode report (first display top modes). |
 | `c_add(a, b)` | `pub function` | Bundled C engine smoke test via FFI. |
-| `DisplayInfo` | `pub struct` | Display model (`name`, `x`, `y`, `w`, `h`, `scale_x100`, `dpi`, `refresh_milliHz`, `bpp`, `primary`, `orientation`, `color`). |
+| `DisplayInfo` | `pub struct` | Display model (`name`, `x`, `y`, `w`, `h`, `scale_x100`, `dpi`, `refresh_milliHz`, `bpp`, `primary`, `orientation`, `color`, `work_x/y/w/h`, `connector`, `gpu`, `label`, `edid_make/model/serial`, `wide_gamut`, `hdr`). |
 | `DisplayInfo.is_known()` | `pub method` | 1 when mode is known (`w > 0` and `h > 0`). |
 | `DisplayInfo.is_primary()` | `pub method` | 1 when primary, 0 otherwise. |
 | `DisplayInfo.area()` | `pub method` | Pixel area (`w * h`), 0 when unknown. |
@@ -186,6 +215,22 @@ main()
 | `DisplayInfo.summary()` | `pub method` | One-line summary (satisfies `Summarizable`). |
 | `DisplayInfo.describe()` | `pub method` | Detailed description (satisfies `Describable`). |
 | `DisplayInfo.is_valid()` | `pub method` | Usability guard (satisfies `Describable`). |
+| `DisplayInfo.has_work_area()` | `pub method` | 1 when a usable area is known. |
+| `DisplayInfo.work_summary()` | `pub method` | Usable-area string (`"1840x1010 @0,40"`). |
+| `DisplayInfo.is_hdr()` | `pub method` | 1 when HDR is active/capable. |
+| `DisplayInfo.is_wide_gamut()` | `pub method` | 1 when wide-gamut (P3). |
+| `DisplayInfo.has_edid()` | `pub method` | 1 when any EDID identity datum is present. |
+| `DisplayInfo.edid_label()` | `pub method` | EDID identity label (`"SAM U2720Q #1234"`). |
+| `DisplayInfo.has_label()` | `pub method` | 1 when a friendly monitor name is known. |
+| `DisplayInfo.has_gpu()` | `pub method` | 1 when adapter/driver info is known. |
+| `DisplayMode` | `pub struct` | Video mode model (`w`, `h`, `refresh_milliHz`). |
+| `DisplayMode.is_known()` | `pub method` | 1 when the resolution is known. |
+| `DisplayMode.area()` | `pub method` | Pixel area, 0 when unknown. |
+| `DisplayMode.refresh_hz()` | `pub method` | Refresh in Hz (-1.0 unknown). |
+| `DisplayMode.resolution()` | `pub method` | Mode string (`"1920x1080"`). |
+| `DisplayMode.summary()` | `pub method` | One-line summary (satisfies `Summarizable`). |
+| `DisplayMode.describe()` | `pub method` | Detailed description (satisfies `Describable`). |
+| `DisplayMode.is_valid()` | `pub method` | Usability guard (satisfies `Describable`). |
 | `DisplayLayout` | `pub struct` | Virtual-desktop model (`x`, `y`, `w`, `h`, `count`, `primary_name`). |
 | `DisplayLayout.is_known()` | `pub method` | 1 when covering at least one display. |
 | `DisplayLayout.area()` | `pub method` | Desktop area, 0 when unknown. |
@@ -209,16 +254,24 @@ main()
 
 | Capability | Windows | macOS | Linux |
 |---|---|---|---|
-| Enumeration | `EnumDisplayMonitors` | `CGGetActiveDisplayList` | XRandR via `dlopen` + X-screen fallback |
-| Bounds/origin | `GetMonitorInfo` (`rcMonitor`) | `CGDisplayBounds` | CRTC `x/y/width/height` |
-| Primary | `MONITORINFOF_PRIMARY` | `CGDisplayIsMain` | `XRRGetOutputPrimary` (first fallback) |
+| Enumeration | `EnumDisplayMonitors` | `CGGetActiveDisplayList` | Wayland-native → XRandR via `dlopen` → X-screen fallback |
+| Bounds/origin | `GetMonitorInfo` (`rcMonitor`) | `CGDisplayBounds` | Wayland position / CRTC `x/y/width/height` |
+| Primary | `MONITORINFOF_PRIMARY` | `CGDisplayIsMain` | `XRRGetOutputPrimary` (first fallback); first enumerated on Wayland |
 | DPI | `GetDpiForMonitor` → `GetDeviceCaps` | Physical size (`CGDisplayScreenSize`) | Output `mm_width` → screen average |
-| Scale | `dpi * 100 / 96` | Pixel ÷ points width (Retina 200) | `GDK_SCALE` or 100 (honest default) |
-| Refresh | `ENUM_CURRENT_SETTINGS` frequency | `CGDisplayMode` refresh | RandR mode `dotClock/(h*v)` |
-| Bit depth | `dmBitsPerPel` | Pixel-encoding string | `DefaultDepth` |
-| Orientation | `dmDisplayOrientation` | `CGDisplayRotation` | CRTC rotation bits |
-| Color profile | ICM filename (`GetICMProfile`) | Color-space name (`sRGB`, `Display P3`) | — (`""`, X11 has no standard query) |
-| Headless | 0 monitors | 0 displays | No `DISPLAY` or `XOpenDisplay` fails → 0 |
+| Scale | `dpi * 100 / 96` | Pixel ÷ points width (Retina 200) | xdg fractional (`phys*100/logical`), `GDK_SCALE`, else 100 |
+| Refresh | `ENUM_CURRENT_SETTINGS` frequency | `CGDisplayMode` refresh | RandR `dotClock/(h*v)` / wl_output mHz |
+| Mode lists | `EnumDisplaySettings` loop | `CGDisplayCopyAllDisplayModes` | RandR output modes / zwlr head modes / current-only |
+| Work area | Per-monitor `rcWork` | Per-monitor `visibleFrame` (NSScreen) | Desktop `_NET_WORKAREA` (single-display) |
+| Bit depth | `dmBitsPerPel` | Pixel-encoding string | `DefaultDepth` (X11); — on Wayland |
+| Orientation | `dmDisplayOrientation` | `CGDisplayRotation` | RandR rotation / Wayland transform |
+| Color profile | ICM filename (`GetICMProfile`) | Color-space name (`sRGB`, `Display P3`) | ICC description (`_ICC_PROFILE`); — on Wayland |
+| Connector | DisplayConfig output tech | Built-in → `internal` | RandR name prefix (`HDMI`/`DP`/`eDP`/…) |
+| GPU | Adapter `DeviceString` | IOFramebuffer parent `model` (best-effort) | Single-card sysfs driver |
+| Monitor label | DisplayConfig friendly name | IOKit product name | EDID model descriptor |
+| EDID | Make/product from device path | IOKit `IODisplayEDID` (product-matched) | RandR `EDID` property |
+| HDR | DisplayConfig advanced color | NSScreen EDR headroom | — (`-1`, no standard query) |
+| Wide gamut | — (`-1`) | P3 color-space label | — (`-1`) |
+| Headless | 0 monitors | 0 displays | No compositor/`DISPLAY` → 0 |
 
 ---
 
