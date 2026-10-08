@@ -1,28 +1,79 @@
 ## display Optional Extras Module (feature-gated)
 ##
 ## Part of the Alya Language package ecosystem (https://github.com/alya-lang).
-## Demonstrates feature-gated API slices: this module is only compiled when
-## the `extras` feature is active (see `[features]` in `alya.toml`). Gate
-## imports and items with `@cfg(feature = "...")` and keep a
-## `@cfg(not(feature = "..."))` fallback stub in `src/lib.alya` so callers
-## get a clear descriptive error instead of an undefined reference.
+## Advanced analytics over enumeration: HiDPI/scaling reports and layout
+## diagnostics. Compiled only when the `extras` feature is active (see
+## `[features]` in `alya.toml`); `src/lib.alya` keeps a fallback stub per
+## symbol so slim builds fail with a clear message instead of an
+## undefined reference.
 
-## Returns an enthusiastic greeting for the specified recipient.
+import "../types.alya"
+import "../display.alya"
+import "../metrics.alya"
+import "./formatter.alya"
+
+## Returns HiDPI displays (scale >= 150%) in enumeration order.
 ##
-## Only available when the `extras` feature is active (default-on). Without
-## it, the fallback stub in `src/lib.alya` throws a descriptive error.
-##
-## ### Parameters
-## - `name`: The recipient name string. Defaults to `"World"`.
-##
-## ### Returns
-## The greeting string `"Howdy, {name}!"`.
-##
-## ### Examples
-## ```alya
-## let msg = extra_greeting("Alya") # "Howdy, Alya!"
-## ```
+## Only available when the `extras` feature is active (default-on).
 @cfg(feature = "extras")
-pub function extra_greeting(name = "World") -> string
-    return "Howdy, {name}!"
+pub function hidpi_displays() -> array
+    return hidpi_only(displays())
+end
+
+## Returns portrait displays (90/270 degrees) in enumeration order.
+##
+## Only available when the `extras` feature is active (default-on).
+@cfg(feature = "extras")
+pub function portrait_displays() -> array
+    return portrait_only(displays())
+end
+
+## Returns displays refreshing at or above min_hz (default 120Hz for gamers).
+##
+## Only available when the `extras` feature is active (default-on).
+@cfg(feature = "extras")
+pub function high_refresh_displays(min_hz: float = 120.0) -> array
+    return refresh_at_least(displays(), min_hz)
+end
+
+## Returns a one-line scaling report (`"2 HiDPI of 3, max 2x, max 192 dpi"`).
+##
+## Headless-safe: `"no displays (headless)"` when nothing is reachable.
+## Only available when the `extras` feature is active (default-on).
+@cfg(feature = "extras")
+pub function scaling_report() -> string
+    let list = displays()
+    if len(list) == 0
+        return "no displays (headless)"
+    end
+    let hi = hidpi_only(list)
+    let best_scale = 100
+    let i = 0
+    while i < len(list)
+        let d: DisplayInfo = list[i]
+        if d.scale_x100 > best_scale
+            best_scale = d.scale_x100
+        end
+        i += 1
+    end
+    return "{len(hi)} HiDPI of {len(list)}, max {format_scale(best_scale)}, max {max_dpi(list)} dpi"
+end
+
+## Returns a one-line layout diagnostic (virtual desktop + primary + total px).
+##
+## Only available when the `extras` feature is active (default-on).
+@cfg(feature = "extras")
+pub function layout_report() -> string
+    let list = displays()
+    let layout = virtual_desktop()
+    if len(list) == 0
+        return "no displays (headless)"
+    end
+    let p = primary_display()
+    let pname = "(no primary)"
+    if p is not null
+        let pd: DisplayInfo = p
+        pname = pd.name
+    end
+    return "{layout.summary()} | primary {pname} | {total_pixels()} px total"
 end

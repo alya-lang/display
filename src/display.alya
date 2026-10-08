@@ -1,0 +1,249 @@
+## display/display — enumeration & parsing
+##
+## Part of the Alya Language package ecosystem (https://github.com/alya-lang).
+## Index-based native enumeration with a pipe-separated wire format, following
+## the proven `sysinfo` mounts/net pattern: entries that fail to parse are
+## skipped, so output length may be < display_count() under hotplug races.
+## Headless-safe: 0 / [] / null when no display server is reachable.
+
+import "std/str"
+import "./types.alya"
+import "./ffi.alya"
+import "./core/strutil.alya"
+
+## Returns the number of enumerated displays (0 when headless/unknown).
+pub function display_count_native() -> int
+    let n = display_native_count()
+    if n < 0
+        return 0
+    end
+    return n
+end
+
+## Parses one native wire entry into a DisplayInfo record, or null when malformed.
+##
+## Wire: "name|x|y|w|h|scale_x100|dpi|refresh_milliHz|bpp|primary|orientation|color"
+function parse_display_entry(entry: string)
+    let parts = split(entry, "|")
+    if len(parts) != 12
+        return null
+    end
+    let w = to_int(parts[3])
+    let h = to_int(parts[4])
+    if w <= 0 or h <= 0
+        return null
+    end
+    if len(parts[0]) == 0
+        return null
+    end
+    let orient = to_int(parts[10])
+    if orient != 0 and orient != 90 and orient != 180 and orient != 270
+        orient = 0
+    end
+    let prim = 0
+    if parts[9] == "1"
+        prim = 1
+    end
+    return DisplayInfo {
+        name: parts[0],
+        x: to_int(parts[1]),
+        y: to_int(parts[2]),
+        w: w,
+        h: h,
+        scale_x100: to_int(parts[5]),
+        dpi: to_int(parts[6]),
+        refresh_milliHz: to_int(parts[7]),
+        bpp: to_int(parts[8]),
+        primary: prim,
+        orientation: orient,
+        color: parts[11]
+    }
+end
+
+## Returns display records for every enumerated monitor (possibly empty headless).
+##
+## Tolerates native index skew like mounts(): empty or malformed entries
+## (holes from concurrent hotplug) are skipped.
+pub function displays() -> array
+    let out = []
+    let n = display_count_native()
+    let i = 0
+    while i < n
+        let entry = str_owned(display_native_at(i))
+        if len(entry) > 0
+            let d = parse_display_entry(entry)
+            if d is not null
+                out.push(d)
+            end
+        end
+        i += 1
+    end
+    return out
+end
+
+## Returns the display at enumeration index i, or null when missing.
+pub function display_at_index(i: int)
+    if i < 0
+        return null
+    end
+    let entry = str_owned(display_native_at(i))
+    if len(entry) == 0
+        return null
+    end
+    return parse_display_entry(entry)
+end
+
+## Returns 1 when at least one display is reachable, 0 otherwise (headless).
+pub function has_displays() -> bool
+    return len(displays()) > 0
+end
+
+## Returns 1 when no display server is reachable (CI/Docker/SSH), 0 otherwise.
+pub function is_headless() -> bool
+    if has_displays() == true
+        return false
+    end
+    return true
+end
+
+## Returns the enumeration index of the primary display (-1 when none).
+pub function primary_index() -> int
+    let list = displays()
+    let i = 0
+    while i < len(list)
+        let d: DisplayInfo = list[i]
+        if d.is_primary() == true
+            return i
+        end
+        i += 1
+    end
+    return -1
+end
+
+## Returns the primary display record, or null when none is reachable.
+pub function primary_display()
+    let list = displays()
+    let i = 0
+    while i < len(list)
+        let d: DisplayInfo = list[i]
+        if d.is_primary() == true
+            return d
+        end
+        i += 1
+    end
+    return null
+end
+
+## Returns the primary display, or the first one as fallback (null when none).
+pub function primary_or_first()
+    let p = primary_display()
+    if p is not null
+        return p
+    end
+    let list = displays()
+    if len(list) > 0
+        return list[0]
+    end
+    return null
+end
+
+## Returns all display names in enumeration order.
+pub function display_names() -> array
+    let out = []
+    let list = displays()
+    for d in list
+        let info: DisplayInfo = d
+        out.push(info.name)
+    end
+    return out
+end
+
+## Returns the display with the given OS name, or null when absent.
+pub function find_display(name: string)
+    if name is null or len(name) == 0
+        return null
+    end
+    let list = displays()
+    for d in list
+        let info: DisplayInfo = d
+        if info.name == name
+            return info
+        end
+    end
+    return null
+end
+
+## Returns the largest display by pixel area (null when none).
+pub function largest_display()
+    let list = displays()
+    let best_idx = -1
+    let best_area = 0
+    let i = 0
+    while i < len(list)
+        let info: DisplayInfo = list[i]
+        let a = info.area()
+        if a > best_area
+            best_area = a
+            best_idx = i
+        end
+        i += 1
+    end
+    if best_idx < 0
+        return null
+    end
+    return list[best_idx]
+end
+
+## Returns the sum of all display pixel areas (0 when headless).
+pub function total_pixels() -> int
+    let total = 0
+    let list = displays()
+    for d in list
+        let info: DisplayInfo = d
+        total += info.area()
+    end
+    return total
+end
+
+## Returns the virtual-desktop bounding box over all displays.
+##
+## The union covers negative origins (left/above-primary monitors); the
+## result is `make_display_layout(0, 0, 0, 0, 0, "")` when headless.
+pub function virtual_desktop() -> DisplayLayout
+    let list = displays()
+    if len(list) == 0
+        return make_display_layout(0, 0, 0, 0, 0, "")
+    end
+    let first: DisplayInfo = list[0]
+    let min_x = first.x
+    let min_y = first.y
+    let max_x = first.x + first.w
+    let max_y = first.y + first.h
+    let pname = ""
+    if first.is_primary() == true
+        pname = first.name
+    end
+    let i = 1
+    while i < len(list)
+        let d: DisplayInfo = list[i]
+        if d.x < min_x
+            min_x = d.x
+        end
+        if d.y < min_y
+            min_y = d.y
+        end
+        let ex = d.x + d.w
+        let ey = d.y + d.h
+        if ex > max_x
+            max_x = ex
+        end
+        if ey > max_y
+            max_y = ey
+        end
+        if d.is_primary() == true
+            pname = d.name
+        end
+        i += 1
+    end
+    return make_display_layout(min_x, min_y, max_x - min_x, max_y - min_y, len(list), pname)
+end

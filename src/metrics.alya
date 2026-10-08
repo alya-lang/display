@@ -1,0 +1,157 @@
+## display/metrics — derived display metrics
+##
+## Part of the Alya Language package ecosystem (https://github.com/alya-lang).
+## Pure headless-safe helpers over `DisplayInfo`: effective (scaled) sizes,
+## physical dimensions, orientation filters, and refresh-rate queries.
+
+import "std/str"
+import "./types.alya"
+
+## Returns the effective (DIP/logical) size `[w, h]` after scale division.
+##
+## A 3840x2160 panel at 200% reports `[1920, 1080]`; unknown scale keeps
+## device pixels. Returns `[w, h]` verbatim for unknown modes.
+pub function effective_size(d: DisplayInfo) -> array
+    if d.is_known() == false
+        return [d.w, d.h]
+    end
+    if d.scale_x100 <= 0
+        return [d.w, d.h]
+    end
+    return [(d.w * 100) / d.scale_x100, (d.h * 100) / d.scale_x100]
+end
+
+## Returns the effective width in logical pixels.
+pub function effective_width(d: DisplayInfo) -> int
+    let s = effective_size(d)
+    return s[0]
+end
+
+## Returns the effective height in logical pixels.
+pub function effective_height(d: DisplayInfo) -> int
+    let s = effective_size(d)
+    return s[1]
+end
+
+## Returns the physical width in inches (-1.0 when DPI is unknown).
+pub function physical_width_in(d: DisplayInfo) -> float
+    if d.is_known() == false or d.dpi <= 0
+        return -1.0
+    end
+    return d.w / (d.dpi * 1.0)
+end
+
+## Returns the physical height in inches (-1.0 when DPI is unknown).
+pub function physical_height_in(d: DisplayInfo) -> float
+    if d.is_known() == false or d.dpi <= 0
+        return -1.0
+    end
+    return d.h / (d.dpi * 1.0)
+end
+
+## Returns 1 when the display reports a known DPI, 0 otherwise.
+pub function has_dpi(d: DisplayInfo) -> bool
+    if d.dpi > 0
+        return true
+    end
+    return false
+end
+
+## Returns 1 when the display reports a known refresh rate, 0 otherwise.
+pub function has_refresh(d: DisplayInfo) -> bool
+    if d.refresh_milliHz > 0
+        return true
+    end
+    return false
+end
+
+## Returns 1 when the display reports a color profile label, 0 otherwise.
+pub function has_color_profile(d: DisplayInfo) -> bool
+    if d.color is null or len(d.color) == 0
+        return false
+    end
+    return true
+end
+
+## Filters a display list to portrait panels (90/270 degrees).
+pub function portrait_only(list: array) -> array
+    let out = []
+    if list is null
+        return out
+    end
+    for d in list
+        let info: DisplayInfo = d
+        if info.is_portrait() == true
+            out.push(info)
+        end
+    end
+    return out
+end
+
+## Filters a display list to HiDPI panels (scale >= 150%).
+pub function hidpi_only(list: array) -> array
+    let out = []
+    if list is null
+        return out
+    end
+    for d in list
+        let info: DisplayInfo = d
+        if info.is_hidpi() == true
+            out.push(info)
+        end
+    end
+    return out
+end
+
+## Filters a display list to panels refreshing at or above min_hz.
+##
+## Compares integer milli-Hz: float function params miscompile in `>=`
+## on this toolchain (probe: `ge_param(60.0, 200.0)` wrongly true), so the
+## threshold is scaled once and all filtering stays in exact integers.
+pub function refresh_at_least(list: array, min_hz: float = 60.0) -> array
+    let out = []
+    if list is null
+        return out
+    end
+    let thr = to_int(min_hz * 1000.0)
+    let i = 0
+    while i < len(list)
+        let info: DisplayInfo = list[i]
+        if info.refresh_milliHz >= thr
+            out.push(info)
+        end
+        i += 1
+    end
+    return out
+end
+
+## Returns the highest refresh rate in the list in Hz (-1.0 when none known).
+pub function max_refresh_hz(list: array) -> float
+    let best = -1.0
+    if list is null
+        return best
+    end
+    for d in list
+        let info: DisplayInfo = d
+        let hz = info.refresh_hz()
+        if hz > best
+            best = hz
+        end
+    end
+    return best
+end
+
+## Returns the highest DPI in the list (-1 when none known).
+pub function max_dpi(list: array) -> int
+    let best = -1
+    if list is null
+        return best
+    end
+    for d in list
+        let info: DisplayInfo = d
+        if info.dpi > best
+            best = info.dpi
+        end
+    end
+    return best
+end

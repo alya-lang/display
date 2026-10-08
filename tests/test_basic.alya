@@ -9,165 +9,217 @@ function main()
     let r = runner_new()
 
     # ═══════════════════════════════════════════════════════════
-    # 1. Facade Greeting & Sanitization
+    # 1. Enumerations
     # ═══════════════════════════════════════════════════════════
-    let res = pkg::hello("Alya")
-    runner_assert_str_eq(r, res, "Hello, Alya!", "pkg::hello returns formatted greeting")
+    runner_assert_eq(r, pkg::DisplayOrientation.Landscape, 0, "DisplayOrientation.Landscape == 0")
+    runner_assert_eq(r, pkg::DisplayOrientation.Portrait, 90, "DisplayOrientation.Portrait == 90")
+    runner_assert_eq(r, pkg::DisplayOrientation.Inverted, 180, "DisplayOrientation.Inverted == 180")
+    runner_assert_eq(r, pkg::DisplayOrientation.Flipped, 270, "DisplayOrientation.Flipped == 270")
 
-    let default_res = pkg::hello()
-    runner_assert_str_eq(r, default_res, "Hello, World!", "pkg::hello() defaults to World")
-
-    let null_res = pkg::hello(null)
-    runner_assert_str_eq(r, null_res, "Hello, World!", "pkg::hello(null) sanitizes null to World")
-
-    let empty_res = pkg::hello("")
-    runner_assert_str_eq(r, empty_res, "Hello, World!", "pkg::hello(\"\") sanitizes empty string to World")
+    runner_assert_eq(r, pkg::DisplayScale.Native, 100, "DisplayScale.Native == 100")
+    runner_assert_eq(r, pkg::DisplayScale.Scaled, 125, "DisplayScale.Scaled == 125")
+    runner_assert_eq(r, pkg::DisplayScale.HiDpi, 150, "DisplayScale.HiDpi == 150")
+    runner_assert_eq(r, pkg::DisplayScale.Retina, 200, "DisplayScale.Retina == 200")
 
     # ═══════════════════════════════════════════════════════════
-    # 2. Enumeration Values
+    # 2. Struct models & factory constructors (deterministic)
     # ═══════════════════════════════════════════════════════════
-    runner_assert_eq(r, pkg::DisplayStatus.Pending, 0, "DisplayStatus.Pending == 0")
-    runner_assert_eq(r, pkg::DisplayStatus.Active, 1, "DisplayStatus.Active == 1")
-    runner_assert_eq(r, pkg::DisplayStatus.Archived, 2, "DisplayStatus.Archived == 2")
-    runner_assert_eq(r, pkg::DisplayStatus.Error, 3, "DisplayStatus.Error == 3")
+    let d = pkg::make_display_info("HDMI-1", 0, 0, 1920, 1080, 100, 96, 60000, 32, 1, 0, "sRGB")
+    runner_assert_str_eq(r, d.name, "HDMI-1", "d.name is initialized correctly")
+    runner_assert_eq(r, d.x, 0, "d.x is 0")
+    runner_assert_eq(r, d.y, 0, "d.y is 0")
+    runner_assert_eq(r, d.w, 1920, "d.w is 1920")
+    runner_assert_eq(r, d.h, 1080, "d.h is 1080")
+    runner_assert_eq(r, d.scale_x100, 100, "d.scale_x100 is 100")
+    runner_assert_eq(r, d.dpi, 96, "d.dpi is 96")
+    runner_assert_eq(r, d.refresh_milliHz, 60000, "d.refresh is 60000")
+    runner_assert_eq(r, d.bpp, 32, "d.bpp is 32")
+    runner_assert_eq(r, d.primary, 1, "d.primary is 1")
+    runner_assert_eq(r, d.orientation, 0, "d.orientation is 0")
+    runner_assert_str_eq(r, d.color, "sRGB", "d.color is sRGB")
 
-    runner_assert_eq(r, pkg::DisplayPriority.Low, 0, "DisplayPriority.Low == 0")
-    runner_assert_eq(r, pkg::DisplayPriority.Normal, 1, "DisplayPriority.Normal == 1")
-    runner_assert_eq(r, pkg::DisplayPriority.High, 2, "DisplayPriority.High == 2")
-    runner_assert_eq(r, pkg::DisplayPriority.Critical, 3, "DisplayPriority.Critical == 3")
+    let retina = pkg::make_display_info("Built-in", 0, 0, 3456, 2234, 200, 254, 120000, 32, 1, 0, "Display P3")
+    runner_assert_eq(r, retina.is_hidpi(), true, "retina.is_hidpi() == 1")
+    runner_assert_eq(r, d.is_hidpi(), false, "1080p@100% is not HiDPI")
 
-    runner_assert_eq(r, pkg::DisplayStyle.Standard, 0, "DisplayStyle.Standard == 0")
-    runner_assert_eq(r, pkg::DisplayStyle.Formal, 1, "DisplayStyle.Formal == 1")
-    runner_assert_eq(r, pkg::DisplayStyle.Casual, 2, "DisplayStyle.Casual == 2")
+    let portrait = pkg::make_display_info("Side", 1920, 0, 1080, 1920, 100, 96, 60000, 32, 0, 90, "")
+    runner_assert_eq(r, portrait.is_portrait(), true, "90deg is portrait")
+    runner_assert_eq(r, d.is_portrait(), false, "0deg is not portrait")
 
-    # ═══════════════════════════════════════════════════════════
-    # 3. Struct Models & Factory Constructors
-    # ═══════════════════════════════════════════════════════════
-    let cfg = pkg::new_config("Community", 5, pkg::DisplayPriority.High, pkg::DisplayStyle.Formal)
-    runner_assert_str_eq(r, cfg.name, "Community", "cfg.name is initialized correctly")
-    runner_assert_eq(r, cfg.count, 5, "cfg.count is initialized correctly")
-    runner_assert_eq(r, cfg.priority, 2, "cfg.priority is initialized to High (2)")
-    runner_assert_eq(r, cfg.style, 1, "cfg.style is initialized to Formal (1)")
-    runner_assert_eq(r, cfg.enabled, 1, "cfg.enabled defaults to 1")
+    runner_assert_eq(r, d.is_primary(), true, "d.is_primary() == 1")
+    runner_assert_eq(r, portrait.is_primary(), false, "portrait.is_primary() == 0")
+    runner_assert_eq(r, d.is_known(), true, "d.is_known() == 1")
+    runner_assert_eq(r, d.area(), 2073600, "1920x1080 area is 2073600")
+    runner_assert_str_eq(r, d.resolution(), "1920x1080", "d.resolution() == 1920x1080")
+    runner_assert_eq(r, d.is_valid(), true, "d.is_valid() == 1")
 
-    let full_cfg = pkg::make_config("Full", 10, pkg::DisplayPriority.Critical, pkg::DisplayStyle.Casual, 0, ["tag1", "tag2"])
-    runner_assert_str_eq(r, full_cfg.name, "Full", "full_cfg.name is correct")
-    runner_assert_eq(r, full_cfg.count, 10, "full_cfg.count is correct")
-    runner_assert_eq(r, full_cfg.priority, 3, "full_cfg.priority is Critical (3)")
-    runner_assert_eq(r, full_cfg.enabled, 0, "full_cfg.enabled is 0")
-    runner_assert_eq(r, len(full_cfg.tags), 2, "full_cfg.tags has 2 elements")
+    let empty = pkg::empty_display()
+    runner_assert_eq(r, empty.is_known(), false, "empty_display is not known")
+    runner_assert_eq(r, empty.area(), 0, "empty area is 0")
+    runner_assert_str_eq(r, empty.resolution(), "unknown", "empty resolution is unknown")
+    runner_assert_eq(r, empty.scale(), -1.0, "empty scale is -1.0")
+    runner_assert_eq(r, empty.refresh_hz(), -1.0, "empty refresh is -1.0")
 
-    # ═══════════════════════════════════════════════════════════
-    # 4. Struct Methods & Immutability
-    # ═══════════════════════════════════════════════════════════
-    let summ = cfg.summary()
-    runner_assert_str_eq(r, summ, "Community (count: 5, active)", "cfg.summary() returns expected formatted summary")
-
-    let desc = cfg.describe()
-    runner_assert_true(r, len(desc) > 0, "cfg.describe() returns non-empty description")
-
-    runner_assert_eq(r, cfg.is_valid(), true, "cfg.is_valid() returns 1 for valid configuration")
-    runner_assert_eq(r, cfg.is_enabled(), 1, "cfg.is_enabled() returns 1")
-
-    let updated_name_cfg = cfg.with_name("Contributors")
-    runner_assert_str_eq(r, updated_name_cfg.name, "Contributors", "with_name updates name")
-    runner_assert_str_eq(r, cfg.name, "Community", "original cfg.name remains immutable")
-
-    let updated_prio_cfg = cfg.with_priority(pkg::DisplayPriority.Critical)
-    runner_assert_eq(r, updated_prio_cfg.priority, 3, "with_priority updates priority")
-    runner_assert_eq(r, cfg.priority, 2, "original cfg.priority remains unchanged")
+    runner_assert_eq(r, d.scale(), 1.0, "100% scale is 1.0")
+    runner_assert_eq(r, retina.scale(), 2.0, "200% scale is 2.0")
+    runner_assert_eq(r, d.refresh_hz(), 60.0, "60000mHz is 60Hz")
+    runner_assert_eq(r, retina.refresh_hz(), 120.0, "120000mHz is 120Hz")
 
     # ═══════════════════════════════════════════════════════════
-    # 5. Result Container & Methods
+    # 3. Duck typing (interfaces)
     # ═══════════════════════════════════════════════════════════
-    let ok_res = pkg::ok_result(42, "Computed successfully")
-    runner_assert_eq(r, ok_res.is_ok(), true, "ok_res.is_ok() == 1")
-    runner_assert_eq(r, ok_res.is_error(), false, "ok_res.is_error() == 0")
-    runner_assert_str_eq(r, ok_res.unwrap_or("fallback"), "Computed successfully", "ok_res unwrap_or returns message")
+    let is_summ = d is pkg::Summarizable
+    runner_assert_true(r, is_summ, "DisplayInfo satisfies Summarizable implicitly")
+    runner_assert_true(r, len(d.summary()) > 0, "d.summary() returns non-empty string")
 
-    let err_res = pkg::error_result("Failed operation", ["Invalid input", "Timeout"])
-    runner_assert_eq(r, err_res.is_ok(), false, "err_res.is_ok() == 0")
-    runner_assert_eq(r, err_res.is_error(), true, "err_res.is_error() == 1")
-    runner_assert_str_eq(r, err_res.unwrap_or("fallback"), "fallback", "err_res unwrap_or returns fallback")
-    runner_assert_eq(r, len(err_res.errors), 2, "err_res contains 2 error details")
+    let is_desc = d is pkg::Describable
+    runner_assert_true(r, is_desc, "DisplayInfo satisfies Describable implicitly")
+    runner_assert_true(r, len(d.describe()) > 0, "d.describe() returns non-empty description")
 
-    # ═══════════════════════════════════════════════════════════
-    # 6. Statistics Container & Methods
-    # ═══════════════════════════════════════════════════════════
-    let stats = pkg::make_stats(20, 18, 2, 0)
-    runner_assert_eq(r, stats.total, 20, "stats.total == 20")
-    runner_assert_eq(r, stats.passed, 18, "stats.passed == 18")
-    runner_assert_eq(r, stats.failed, 2, "stats.failed == 2")
-    runner_assert_eq(r, stats.total_checked(), 20, "stats.total_checked() == 20")
-    runner_assert_str_eq(r, stats.success_rate(), "90%", "stats.success_rate() == 90%")
+    let layout = pkg::make_display_layout(0, 0, 3840, 1080, 2, "HDMI-1")
+    runner_assert_eq(r, layout.is_known(), true, "layout.is_known() == 1")
+    runner_assert_eq(r, layout.area(), 4147200, "layout area is 4147200")
+    runner_assert_true(r, layout is pkg::Summarizable, "DisplayLayout satisfies Summarizable")
+    runner_assert_true(r, layout is pkg::Describable, "DisplayLayout satisfies Describable")
+    runner_assert_str_eq(r, layout.summary(), "2 displays 3840x1080 @0,0", "layout.summary() vector")
+
+    let nolayout = pkg::make_display_layout(0, 0, 0, 0, 0, "")
+    runner_assert_eq(r, nolayout.is_known(), false, "empty layout is not known")
+    runner_assert_str_eq(r, nolayout.summary(), "no displays", "empty layout summary")
 
     # ═══════════════════════════════════════════════════════════
-    # 7. Duck Typing Polymorphism (Interfaces)
+    # 4. Formatter vectors (deterministic)
     # ═══════════════════════════════════════════════════════════
-    let is_summ = cfg is pkg::Summarizable
-    runner_assert_true(r, is_summ, "cfg satisfies Summarizable interface implicitly")
-    let iface_summ = pkg::format_summary(cfg)
-    runner_assert_str_eq(r, iface_summ, "Community (count: 5, active)", "format_summary dispatches via Summarizable")
+    runner_assert_str_eq(r, pkg::format_scale(100), "1x", "format_scale 100 == 1x")
+    runner_assert_str_eq(r, pkg::format_scale(150), "1.5x", "format_scale 150 == 1.5x")
+    runner_assert_str_eq(r, pkg::format_scale(200), "2x", "format_scale 200 == 2x")
+    runner_assert_str_eq(r, pkg::format_scale(125), "1.3x", "format_scale 125 rounds to 1.3x")
+    runner_assert_str_eq(r, pkg::format_scale(-1), "unknown", "format_scale -1 == unknown")
 
-    let is_desc = cfg is pkg::Describable
-    runner_assert_true(r, is_desc, "cfg satisfies Describable interface implicitly")
-    let iface_desc = pkg::format_description(cfg)
-    runner_assert_true(r, len(iface_desc) > 0, "format_description dispatches via Describable")
+    runner_assert_str_eq(r, pkg::format_dpi(96), "96 dpi", "format_dpi 96")
+    runner_assert_str_eq(r, pkg::format_dpi(-1), "unknown dpi", "format_dpi unknown")
 
-    # Struct that does not implement Summarizable
-    let is_stats_summ = stats is pkg::Summarizable
-    runner_assert_false(r, is_stats_summ, "stats does not satisfy Summarizable interface")
+    runner_assert_str_eq(r, pkg::format_refresh(60000), "60Hz", "format_refresh 60Hz")
+    runner_assert_str_eq(r, pkg::format_refresh(144000), "144Hz", "format_refresh 144Hz")
+    runner_assert_str_eq(r, pkg::format_refresh(59940), "59.94Hz", "format_refresh 59.94Hz")
+    runner_assert_str_eq(r, pkg::format_refresh(-1), "unknown", "format_refresh unknown")
 
-    # ═══════════════════════════════════════════════════════════
-    # 8. Workflow Processing & Batching
-    # ═══════════════════════════════════════════════════════════
-    let proc_res = pkg::process("Alice", 3, pkg::DisplayPriority.High)
-    runner_assert_eq(r, proc_res.is_ok(), 1, "pkg::process returns successful result")
-    runner_assert_str_eq(r, proc_res.message, "OK", "pkg::process message is OK")
-
-    let batch_in = ["Alpha", "Beta", "Gamma"]
-    let batch_out = pkg::process_batch(batch_in)
-    runner_assert_eq(r, len(batch_out), 3, "process_batch returns 3 formatted records")
-
-    let null_batch = pkg::process_batch(null)
-    runner_assert_eq(r, len(null_batch), 0, "process_batch(null) returns empty array")
+    runner_assert_str_eq(r, pkg::format_resolution(d), "1920x1080", "format_resolution vector")
+    runner_assert_true(r, len(pkg::format_display(d)) > 0, "format_display returns non-empty string")
+    runner_assert_str_eq(r, pkg::format_display(empty), " unknown", "format_display empty vector")
+    runner_assert_str_eq(r, pkg::format_display_list([]), "(no displays)", "format_display_list empty")
+    runner_assert_true(r, len(pkg::format_display_list([d, portrait])) > 0, "format_display_list two entries")
+    runner_assert_str_eq(r, pkg::format_layout(nolayout), "no displays", "format_layout empty")
+    runner_assert_str_eq(r, pkg::format_snapshot([]), "Displays: none (headless)", "format_snapshot headless")
+    runner_assert_true(r, len(pkg::format_snapshot([d])) > 0, "format_snapshot single non-empty")
 
     # ═══════════════════════════════════════════════════════════
-    # 9. Control Flow & Pattern Matching Utilities
+    # 5. Metrics vectors (deterministic, no hardware)
     # ═══════════════════════════════════════════════════════════
-    runner_assert_eq(r, pkg::clamp(50, 0, 100), 50, "clamp within bounds")
-    runner_assert_eq(r, pkg::clamp(-10, 0, 100), 0, "clamp lower bound")
-    runner_assert_eq(r, pkg::clamp(150, 0, 100), 100, "clamp upper bound")
+    let eff = pkg::effective(retina)
+    runner_assert_eq(r, eff[0], 1728, "retina effective width is 1728")
+    runner_assert_eq(r, eff[1], 1117, "retina effective height is 1117")
+    runner_assert_eq(r, pkg::effective(d)[0], 1920, "100% effective width unchanged")
+    runner_assert_eq(r, pkg::has_dpi(d), true, "d has DPI")
+    runner_assert_eq(r, pkg::has_dpi(empty), false, "empty has no DPI")
+    runner_assert_eq(r, pkg::has_refresh(d), true, "d has refresh")
+    runner_assert_eq(r, pkg::has_refresh(empty), false, "empty has no refresh")
+    runner_assert_eq(r, pkg::has_color_profile(d), true, "d has color profile")
+    runner_assert_eq(r, pkg::has_color_profile(portrait), false, "portrait has no color profile")
 
-    runner_assert_str_eq(r, pkg::pluralize(1, "record", "records"), "record", "pluralize 1 gives singular")
-    runner_assert_str_eq(r, pkg::pluralize(0, "record", "records"), "records", "pluralize 0 gives plural")
-    runner_assert_str_eq(r, pkg::pluralize(5, "record", "records"), "records", "pluralize 5 gives plural")
-
-    let repeated = pkg::repeat_string("item", 3)
-    runner_assert_eq(r, len(repeated), 3, "repeat_string produces 3 elements")
-    runner_assert_str_eq(r, repeated[0], "item", "repeated element matches input")
-
-    # ═══════════════════════════════════════════════════════════
-    # 10. Destructuring: Tuples & Maps
-    # ═══════════════════════════════════════════════════════════
-    let (t_prefix, t_count) = ("Custom", 42)
-    runner_assert_str_eq(r, t_prefix, "Custom", "tuple destructuring binds string")
-    runner_assert_eq(r, t_count, 42, "tuple destructuring binds integer")
-
-    let pkg_info = { "name": "display", "version": "0.1.0" }
-    let { name: info_name, version: info_ver } = pkg_info
-    runner_assert_str_eq(r, info_name, "display", "map destructuring extracts key name")
-    runner_assert_str_eq(r, info_ver, "0.1.0", "map destructuring extracts key version")
+    let pair = [d, retina]
+    runner_assert_eq(r, len(pkg::hidpi_only(pair)), 1, "hidpi_only filters to retina")
+    runner_assert_eq(r, len(pkg::portrait_only(pair)), 0, "portrait_only empty for landscapes")
+    runner_assert_eq(r, len(pkg::portrait_only([portrait])), 1, "portrait_only finds portrait")
+    runner_assert_eq(r, len(pkg::refresh_at_least(pair, 120.0)), 1, "refresh_at_least finds 120Hz")
+    runner_assert_eq(r, pkg::max_refresh_hz(pair), 120.0, "max refresh is 120Hz")
+    runner_assert_eq(r, pkg::max_refresh_hz([]), -1.0, "max refresh empty is -1.0")
+    runner_assert_eq(r, pkg::max_dpi(pair), 254, "max DPI is 254")
+    runner_assert_eq(r, pkg::max_dpi([]), -1, "max DPI empty is -1")
 
     # ═══════════════════════════════════════════════════════════
-    # 11. Feature-Gated API (`extras`, default-on)
+    # 6. Live enumeration (headless-tolerant: 0 valid on CI/Docker/SSH)
+    # ═══════════════════════════════════════════════════════════
+    let n = pkg::display_count()
+    runner_assert_true(r, n >= 0, "display_count is non-negative")
+    let list = pkg::displays()
+    runner_assert_true(r, len(list) <= n, "displays length does not exceed count (hotplug skew)")
+    runner_assert_true(r, len(list) >= 0, "displays length is non-negative")
+
+    let i = 0
+    while i < len(list)
+        let info: DisplayInfo = list[i]
+        runner_assert_true(r, info.is_known(), "live display is known")
+        runner_assert_true(r, info.is_valid(), "live display is valid")
+        runner_assert_true(r, len(info.name) > 0, "live display has a name")
+        runner_assert_true(r, info.w > 0, "live display width positive")
+        runner_assert_true(r, info.h > 0, "live display height positive")
+        runner_assert_true(r, info.scale_x100 == -1 or info.scale_x100 > 0, "live scale sane")
+        runner_assert_true(r, info.dpi == -1 or info.dpi > 0, "live DPI sane")
+        runner_assert_true(r, len(pkg::format_display(info)) > 0, "live format_display non-empty")
+        i += 1
+    end
+
+    let pi = pkg::primary_index()
+    runner_assert_true(r, pi >= -1, "primary_index is -1 or non-negative")
+    runner_assert_true(r, pi < len(list), "primary_index within bounds")
+    if len(list) == 0
+        runner_assert_eq(r, pi, -1, "headless primary_index is -1")
+        runner_assert_eq(r, pkg::primary_display() is null, true, "headless primary is null")
+        runner_assert_eq(r, pkg::primary_or_first() is null, true, "headless primary_or_first is null")
+        runner_assert_eq(r, pkg::largest_display() is null, true, "headless largest is null")
+        runner_assert_eq(r, pkg::total_pixels(), 0, "headless total pixels is 0")
+        runner_assert_eq(r, pkg::has_displays(), false, "headless has_displays is 0")
+        runner_assert_eq(r, pkg::is_headless(), true, "headless is_headless is 1")
+        runner_assert_eq(r, pkg::has_display(), false, "headless has_display is 0")
+        runner_assert_eq(r, pkg::headless(), true, "headless headless() is 1")
+    else
+        runner_assert_eq(r, pkg::has_displays(), true, "attached has_displays is 1")
+        runner_assert_eq(r, pkg::is_headless(), false, "attached is_headless is 0")
+        let prim = pkg::primary_or_first()
+        runner_assert_eq(r, prim is null, false, "attached primary_or_first non-null")
+        let big = pkg::largest_display()
+        runner_assert_eq(r, big is null, false, "attached largest non-null")
+        runner_assert_true(r, pkg::total_pixels() > 0, "attached total pixels positive")
+        runner_assert_eq(r, len(pkg::display_names()), len(list), "names length matches")
+        let first: DisplayInfo = list[0]
+        let found = pkg::find_display(first.name)
+        runner_assert_eq(r, found is null, false, "find_display locates first display")
+        let at0 = pkg::display_at_index(0)
+        runner_assert_eq(r, at0 is null, false, "display_at_index(0) non-null when attached")
+        runner_assert_eq(r, pkg::display_at_index(-1) is null, true, "negative index is null")
+        runner_assert_eq(r, pkg::display_at_index(9999) is null, true, "huge index is null")
+    end
+    runner_assert_eq(r, pkg::find_display("display-missing-xyz") is null, true, "missing name is null")
+    runner_assert_eq(r, pkg::find_display("") is null, true, "empty name is null")
+
+    let vd = pkg::virtual_desktop()
+    runner_assert_eq(r, vd.count, len(list), "virtual_desktop count matches")
+    runner_assert_eq(r, pkg::layout().count, len(list), "layout() count matches")
+    if len(list) > 0
+        runner_assert_eq(r, vd.is_known(), true, "attached layout is known")
+        runner_assert_true(r, len(pkg::details()) > 0, "details() non-empty when attached")
+    else
+        runner_assert_eq(r, vd.is_known(), false, "headless layout unknown")
+    end
+    runner_assert_true(r, len(pkg::summary()) > 0, "summary() always non-empty")
+    runner_assert_true(r, len(pkg::details()) > 0, "details() always non-empty")
+
+    # ═══════════════════════════════════════════════════════════
+    # 7. Feature-gated extras (default-on)
     # ═══════════════════════════════════════════════════════════
     @cfg(feature = "extras")
-    let extra_res = pkg::extra_greeting("Alya")
+    runner_assert_eq(r, len(pkg::hidpi_displays()) <= len(pkg::displays()), true, "hidpi subset")
     @cfg(feature = "extras")
-    runner_assert_str_eq(r, extra_res, "Howdy, Alya!", "pkg::extra_greeting returns extras greeting")
+    runner_assert_eq(r, len(pkg::portrait_displays()) <= len(pkg::displays()), true, "portrait subset")
+    @cfg(feature = "extras")
+    runner_assert_true(r, len(pkg::scaling_report()) > 0, "scaling_report non-empty")
+    @cfg(feature = "extras")
+    runner_assert_true(r, len(pkg::layout_report()) > 0, "layout_report non-empty")
+    @cfg(feature = "extras")
+    runner_assert_eq(r, len(pkg::high_refresh_displays(120.0)) <= len(pkg::displays()), true, "high-refresh subset")
 
-    # 12. Native C FFI verification
+    # 8. Native C FFI verification
     let c_sum = pkg::c_add(10, 32)
     runner_assert_eq(r, c_sum, 42, "pkg::c_add executes bundled C code")
 

@@ -1,7 +1,7 @@
 [package]
 name = "display"
 version = "0.1.0"
-alya-version = "0.0.19"
+alya-version = "0.0.20"
 entry = "src/lib.alya"
 description = "Cross-platform display enumeration: monitors, resolution, DPI, scale, refresh rate, and color info for Alya"
 authors = ["Alya Language Contributors <https://github.com/alya-lang>"]
@@ -27,8 +27,14 @@ extras = []
 
 [build]
 c-sources = ["c/display.c"]
+c-sources-windows = ["c/win32_display.c"]
+c-sources-macos = ["c/cocoa_display.c"]
+c-sources-linux = ["c/linux_display.c"]
 c-flags = ["-O2"]
 c-include-dirs = ["c"]
+c-link-flags-windows = ["-lgdi32", "-luser32"]
+c-link-flags-macos = ["-framework", "CoreGraphics", "-framework", "CoreFoundation"]
+c-link-flags-linux = ["-lX11"]
 links = "display"
 
 # [lint]

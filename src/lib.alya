@@ -1,204 +1,184 @@
 ## display Library Facade
 ##
-## Part of the Alya Language package ecosystem (https://github.com/alya-lang).
-## Serves as the primary public entry point and facade for the display package,
-## exposing models, enums, constructors, interfaces, and processing workflows.
+## Cross-platform display enumeration for Alya: monitor count, resolution,
+## position, DPI, scale/zoom, refresh rate, color depth, orientation, and
+## color profile. Headless-safe: 0 / [] / null when no display server is
+## reachable (CI, Docker, SSH). Part of the Alya Language package ecosystem
+## (https://github.com/alya-lang).
 
 import "./types.alya"
+import "./ffi.alya"
+import "./display.alya"
+import "./metrics.alya"
 import "./core/formatter.alya"
 @cfg(feature = "extras")
 import "./core/extras.alya"
 
 # ───────────────────────────────────────────────────────────────
-# Primary Facade APIs
+# Enumeration Facade
 # ───────────────────────────────────────────────────────────────
 
-## Formats and returns a greeting message for the specified recipient.
-##
-## Defaults to `"World"` if the name parameter is omitted, empty, or null.
-##
-## ### Parameters
-## - `name`: The name of the recipient to greet. Defaults to `"World"`.
+## Returns the number of enumerated displays (0 when headless/unknown).
 ##
 ## ### Returns
-## A formatted greeting string, e.g. `"Hello, World!"`.
+## Display count (>= 0, never negative).
 ##
 ## ### Examples
 ## ```alya
-## let msg = hello("Alya")
-## say msg # "Hello, Alya!"
+## let n = display_count()
 ## ```
-pub function hello(name = "World") -> string
-    let clean = sanitize_name(name)
-    return core_format_greeting(clean)
+pub function display_count() -> int
+    return display_count_native()
 end
 
-## Constructs a new configuration model instance with specified or default values.
+## Returns display records for every enumerated monitor (possibly empty headless).
 ##
-## ### Parameters
-## - `name`: Target recipient or entity name. Defaults to `"World"`.
-## - `count`: Number of iterations or repetition limit. Defaults to `1`.
-## - `priority`: Operational priority level (`DisplayPriority`). Defaults to `DisplayPriority.Normal`.
-## - `style`: Formality style variant code (`DisplayStyle`). Defaults to `DisplayStyle.Standard`.
-##
-## ### Returns
-## A newly initialized `DisplayConfig` instance.
+## Canonical enumeration lives in `src/display.alya` and is re-exported here;
+## call `displays()` directly (no facade wrapper, to avoid symbol duplication).
 ##
 ## ### Examples
 ## ```alya
-## let cfg = new_config("Community", 5, DisplayPriority.High, DisplayStyle.Formal)
+## let list = displays()
 ## ```
-pub function new_config(name = "World", count: int = 1, priority: int = DisplayPriority.Normal, style: int = DisplayStyle.Standard) -> DisplayConfig
-    return make_config(name, count, priority, style)
+
+## Returns the display at enumeration index i, or null when missing.
+pub function display_at(i: int)
+    return display_at_index(i)
 end
 
-## Processes a configuration label through the formatting pipeline, returning a `DisplayResult`.
-##
-## ### Parameters
-## - `label`: The target entity label string. Defaults to `"World"`.
-## - `count`: Counter or repetition count. Defaults to `1`.
-## - `priority`: Priority tier. Defaults to `DisplayPriority.Normal`.
-##
-## ### Returns
-## A successful `DisplayResult` containing the formatted summary string.
-##
-## ### Examples
-## ```alya
-## let res = process("Alice", 3, DisplayPriority.High)
-## say res.message # "OK"
-## ```
-pub function process(label = "World", count: int = 1, priority: int = DisplayPriority.Normal) -> DisplayResult
-    let cfg = make_config(label, count, priority)
-    let formatted = format_config(cfg)
-    return ok_result(formatted, "OK")
+## Returns 1 when at least one display is reachable, 0 otherwise.
+pub function has_display() -> bool
+    return has_displays()
 end
 
-## Processes an array of labels in batch, returning an array of formatted strings.
-##
-## Handles null input safely by returning an empty array.
-##
-## ### Parameters
-## - `labels`: Array of label strings to process (or null).
-##
-## ### Returns
-## An array of formatted result strings.
-##
-## ### Examples
-## ```alya
-## let results = process_batch(["Alpha", "Beta"])
-## ```
-pub function process_batch(labels) -> array
-    if labels is null
-        return []
-    end
-
-    let configs = []
-    for lbl in labels
-        configs.push(make_config(lbl, 1, DisplayPriority.Normal))
-    end
-    return format_batch(configs)
+## Returns 1 when no display server is reachable, 0 otherwise.
+pub function headless() -> bool
+    return is_headless()
 end
 
-## Formats and returns the summary representation of a configuration.
+## Returns the enumeration index of the primary display (-1 when none).
 ##
-## Demonstrates struct method dispatch and interface satisfaction (`Summarizable`).
-##
-## ### Parameters
-## - `cfg`: A `DisplayConfig` instance.
-##
-## ### Returns
-## The string returned by the config's `summary()` method.
-##
-## ### Examples
-## ```alya
-## let cfg = new_config("Community", 3)
-## say format_summary(cfg)
-## ```
-pub function format_summary(cfg: DisplayConfig) -> string
-    return cfg.summary()
+## Canonical query lives in `src/display.alya` (`primary_index()`); re-exported here.
+
+## Returns the primary display record, or null when none is reachable.
+pub function primary()
+    return primary_display()
 end
 
-## Formats and returns the description of a configuration.
+## Returns the primary display, or the first one as fallback (null when none).
 ##
-## Demonstrates struct method dispatch and interface satisfaction (`Describable`).
-##
-## ### Parameters
-## - `cfg`: A `DisplayConfig` instance.
-##
-## ### Returns
-## The string returned by `describe()`.
-##
-## ### Examples
-## ```alya
-## let cfg = new_config("Project", 1)
-## say format_description(cfg)
-## ```
-pub function format_description(cfg: DisplayConfig) -> string
-    return cfg.describe()
+## Canonical query lives in `src/display.alya` (`primary_or_first()`); re-exported here.
+
+## Returns all display names in enumeration order.
+pub function names() -> array
+    return display_names()
 end
 
-## Clamps an integer to the closed interval `[min_val, max_val]`.
-##
-## ### Parameters
-## - `n`: Value to clamp.
-## - `min_val`: Lower bound.
-## - `max_val`: Upper bound.
-##
-## ### Returns
-## Clamped integer within the specified range.
-pub function clamp(n: int, min_val: int, max_val: int) -> int
-    return clamp_count(n, min_val, max_val)
+## Returns the display with the given OS name, or null when absent.
+pub function find(name: string)
+    return find_display(name)
 end
 
-## Returns singular or plural form based on item count.
-##
-## ### Parameters
-## - `n`: The item count.
-## - `singular`: Word form for count == 1.
-## - `plural`: Word form for counts != 1.
-##
-## ### Returns
-## The selected string based on `n`.
-pub function pluralize(n: int, singular: string, plural: string) -> string
-    return when n
-        is 1 => singular
-        else => plural
-    end
+## Returns the largest display by pixel area (null when none).
+pub function largest()
+    return largest_display()
 end
 
-## Returns an array repeating the given string `count` times.
+## Returns the sum of all display pixel areas (0 when headless).
+pub function total_px() -> int
+    return total_pixels()
+end
+
+## Returns the virtual-desktop bounding box over all displays.
+pub function layout() -> DisplayLayout
+    return virtual_desktop()
+end
+
+# ───────────────────────────────────────────────────────────────
+# Metrics Facade (pure, headless-safe)
+# ───────────────────────────────────────────────────────────────
+
+## Returns the effective (logical) size `[w, h]` after scale division.
+pub function effective(d: DisplayInfo) -> array
+    return effective_size(d)
+end
+
+## Returns the highest refresh rate in Hz (-1.0 when none known).
+pub function max_hz(list: array) -> float
+    return max_refresh_hz(list)
+end
+
+## Returns the highest DPI in the list (-1 when none known).
+pub function max_display_dpi(list: array) -> int
+    return max_dpi(list)
+end
+
+# ───────────────────────────────────────────────────────────────
+# Snapshot Facade
+# ───────────────────────────────────────────────────────────────
+
+## Returns a one-line human-readable display snapshot.
 ##
-## ### Parameters
-## - `label`: String to repeat.
-## - `count`: Number of occurrences.
+## Headless-safe: `"Displays: none (headless)"` when nothing is reachable.
 ##
 ## ### Returns
-## Array of repeated strings.
-pub function repeat_string(label: string, count: int) -> array
-    return repeat_label(label, count)
+## Formatted snapshot string (count + first display).
+pub function summary() -> string
+    return format_snapshot(displays())
+end
+
+## Returns a detailed multi-line display report.
+##
+## ### Returns
+## One line per display plus a layout line.
+pub function details() -> string
+    return format_report(displays(), virtual_desktop())
+end
+
+# ───────────────────────────────────────────────────────────────
+# Native C FFI helper (bundled engine smoke test)
+# ───────────────────────────────────────────────────────────────
+
+## Native C FFI helper function
+pub function c_add(a: int = 0, b: int = 0) -> int
+    return alya_display_add(a, b)
 end
 
 # ───────────────────────────────────────────────────────────────
 # Feature-Gated API Fallback Stubs
 # ───────────────────────────────────────────────────────────────
 
-# The slim-view stub below keeps the public API surface stable when the
-# `extras` feature is disabled, so callers get a clear descriptive error
-# instead of an undefined reference (param unused by design).
+# Slim-view stubs keep the public API surface stable when the `extras`
+# feature is disabled, so callers get a clear descriptive error instead of
+# an undefined reference (params unused by design).
 # alya-lint: disable unused-param
-## Fallback stub for `extra_greeting` when the `extras` feature is disabled.
-##
-## Rebuild with default features (or `--features extras`) for the full
-## implementation in `src/core/extras.alya`.
+## Fallback stub for `hidpi_displays` when the `extras` feature is disabled.
 @cfg(not(feature = "extras"))
-pub function extra_greeting(name = "World") -> string
+pub function hidpi_displays() -> array
+    throw "extras feature is disabled (rebuild with default features or --features extras)"
+end
+
+## Fallback stub for `portrait_displays` when the `extras` feature is disabled.
+@cfg(not(feature = "extras"))
+pub function portrait_displays() -> array
+    throw "extras feature is disabled (rebuild with default features or --features extras)"
+end
+
+## Fallback stub for `high_refresh_displays` when the `extras` feature is disabled.
+@cfg(not(feature = "extras"))
+pub function high_refresh_displays(min_hz: float = 120.0) -> array
+    throw "extras feature is disabled (rebuild with default features or --features extras)"
+end
+
+## Fallback stub for `scaling_report` when the `extras` feature is disabled.
+@cfg(not(feature = "extras"))
+pub function scaling_report() -> string
+    throw "extras feature is disabled (rebuild with default features or --features extras)"
+end
+
+## Fallback stub for `layout_report` when the `extras` feature is disabled.
+@cfg(not(feature = "extras"))
+pub function layout_report() -> string
     throw "extras feature is disabled (rebuild with default features or --features extras)"
 end
 # alya-lint: enable unused-param
-
-import "./ffi.alya"
-
-## Native C FFI helper function
-pub function c_add(a: int = 0, b: int = 0) -> int
-    return alya_display_add(a, b)
-end

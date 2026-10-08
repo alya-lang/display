@@ -1,8 +1,9 @@
 ## display Types & Data Structures
 ##
 ## Part of the Alya Language package ecosystem (https://github.com/alya-lang).
-## Defines configuration models, enumerations, structural interfaces, and associated methods
-## showcasing the full range of modern Alya type system capabilities.
+## Platform-neutral models for display enumeration: monitor geometry, DPI,
+## scale factor, refresh rate, color depth, orientation, and color profile.
+## Nothing here touches the OS, so it is fully headless-testable.
 
 # ───────────────────────────────────────────────────────────────
 # Structural Interfaces (Duck Typing)
@@ -29,91 +30,76 @@ end
 # Enumerations
 # ───────────────────────────────────────────────────────────────
 
-## Public enumeration of entity lifecycle status states.
+## Physical rotation of a display panel in degrees.
 ##
-## Defines sequential status codes from pending to completed or error states.
-pub enum DisplayStatus
-    Pending = 0,
-    Active = 1,
-    Archived = 2,
-    Error = 3
+## Wire values are always one of 0/90/180/270 (see `DisplayInfo.orientation`).
+pub enum DisplayOrientation
+    Landscape = 0,
+    Portrait = 90,
+    Inverted = 180,
+    Flipped = 270
 end
 
-## Public enumeration of operational priority levels.
+## Scale-factor buckets for quick HiDPI classification.
 ##
-## Used to determine dispatch scheduling, queue ordering, and urgency tiers.
-pub enum DisplayPriority
-    Low = 0,
-    Normal = 1,
-    High = 2,
-    Critical = 3
-end
-
-## Public enumeration of greeting and presentation styles.
-##
-## Governs formatting salutations, prefixes, and stylistic tone.
-pub enum DisplayStyle
-    Standard = 0,
-    Formal = 1,
-    Casual = 2
+## Thresholds are advisory: 100% is baseline, 125%+ is scaled, 150%+ is HiDPI.
+pub enum DisplayScale
+    Native = 100,
+    Scaled = 125,
+    HiDpi = 150,
+    Retina = 200
 end
 
 # ───────────────────────────────────────────────────────────────
 # Data Models (Structs)
 # ───────────────────────────────────────────────────────────────
 
-## Configuration data model holding execution parameters and metadata.
-##
-## Encapsulates target identity, counter thresholds, priority tier, stylistic
-## mode, active status flag, and associated classification tags.
+## Single display record (unknown numerics are -1, unknown text is "").
 ##
 ## ### Fields
-## - `name`: Validated entity identifier string.
-## - `count`: Repetition limit or processing counter.
-## - `priority`: Operational priority level (`DisplayPriority` enum value).
-## - `style`: Presentation style variant (`DisplayStyle` enum value).
-## - `enabled`: Activation flag (1 for active, 0 for inactive).
-## - `tags`: Categorical metadata tags array.
-pub struct DisplayConfig
+## - `name`: OS device label (`"\\\\.\\DISPLAY1"`, `"Display 1"`, `"HDMI-1"`).
+## - `x`: Left edge in virtual-desktop pixels (may be negative).
+## - `y`: Top edge in virtual-desktop pixels (may be negative).
+## - `w`: Width in device pixels (> 0 when known).
+## - `h`: Height in device pixels (> 0 when known).
+## - `scale_x100`: Scale percent (100 = 1.00x, 200 = 2.00x Retina, -1 unknown).
+## - `dpi`: Dots per inch (-1 when unknown, e.g. projectors/VMs).
+## - `refresh_milliHz`: Refresh in milli-Hz (60000 = 60Hz, -1 unknown).
+## - `bpp`: Bits per pixel (32/24/16/8, -1 unknown).
+## - `primary`: 1 for the primary display, 0 otherwise.
+## - `orientation`: Panel rotation (0/90/180/270).
+## - `color`: OS color profile label (`"sRGB"`, `"Display P3"`, "" unknown).
+pub struct DisplayInfo
     name: string,
+    x: int,
+    y: int,
+    w: int,
+    h: int,
+    scale_x100: int,
+    dpi: int,
+    refresh_milliHz: int,
+    bpp: int,
+    primary: int,
+    orientation: int,
+    color: string
+end
+
+## Virtual-desktop bounding box over all displays.
+##
+## ### Fields
+## - `x`: Left edge of the union rect.
+## - `y`: Top edge of the union rect.
+## - `w`: Union width (0 when there are no displays).
+## - `h`: Union height (0 when there are no displays).
+## - `count`: Number of displays covered.
+## - `primary_name`: Name of the primary display ("" when none).
+pub struct DisplayLayout
+    x: int,
+    y: int,
+    w: int,
+    h: int,
     count: int,
-    priority: int,
-    style: int,
-    enabled: int,
-    tags: array
-end
-
-## Container representing the outcome of an operation.
-##
-## Holds an optional payload value, numeric status code, informational message,
-## and accumulated error diagnostic messages.
-##
-## ### Fields
-## - `value`: Result payload (any type, or null on failure).
-## - `status`: Outcome code (0 for success, non-zero for errors).
-## - `message`: Human-readable summary or error explanation.
-## - `errors`: Diagnostic error messages array.
-pub struct DisplayResult
-    value,
-    status: int,
-    message: string,
-    errors: array
-end
-
-## Aggregated run statistics tracking test, processing, or batch metrics.
-##
-## Records total observed items, successes, failures, and skipped items.
-##
-## ### Fields
-## - `total`: Total processed items count.
-## - `passed`: Succeeded items count.
-## - `failed`: Failed items count.
-## - `skipped`: Skipped items count.
-pub struct DisplayStats
-    total: int,
-    passed: int,
-    failed: int,
-    skipped: int
+    primary_name: string
 end
 
 # ───────────────────────────────────────────────────────────────
@@ -129,306 +115,237 @@ function sanitize_text_internal(text, fallback: string) -> string
     end
 end
 
-# Formats integer division as a percentage string, clamping denominator zero.
-function format_percent_internal(passed: int, total: int) -> string
-    if total <= 0
-        return "0%"
-    end
-    let pct = (passed * 100) / total
-    return "{pct}%"
-end
-
 # ───────────────────────────────────────────────────────────────
-# Public Sanitization and Factory Constructors
+# Public Factory Constructors
 # ───────────────────────────────────────────────────────────────
 
-## Validates and sanitizes a candidate name string.
-##
-## Replaces null or empty strings with the default `"World"` fallback.
+## Builds a `DisplayInfo` record from explicit values (testing/snapshots).
 ##
 ## ### Parameters
-## - `name`: The candidate name value to sanitize.
+## - `name`: OS device label.
+## - `x`: Left edge in virtual-desktop pixels. Defaults to `0`.
+## - `y`: Top edge in virtual-desktop pixels. Defaults to `0`.
+## - `w`: Width in device pixels.
+## - `h`: Height in device pixels.
+## - `scale_x100`: Scale percent (100 = 1.00x). Defaults to `100`.
+## - `dpi`: Dots per inch (-1 unknown). Defaults to `-1`.
+## - `refresh_milliHz`: Refresh in milli-Hz (-1 unknown). Defaults to `-1`.
+## - `bpp`: Bits per pixel (-1 unknown). Defaults to `-1`.
+## - `primary`: 1 for primary, 0 otherwise. Defaults to `0`.
+## - `orientation`: Panel rotation. Defaults to `0`.
+## - `color`: Color profile label. Defaults to `""`.
 ##
 ## ### Returns
-## The validated string value, or `"World"` if empty or null.
+## A fully initialized `DisplayInfo` instance.
 ##
 ## ### Examples
 ## ```alya
-## let clean = sanitize_name(null) # "World"
-## let user = sanitize_name("Alice") # "Alice"
+## let d = make_display_info("HDMI-1", 0, 0, 1920, 1080, 100, 96, 60000, 32, 1, 0, "sRGB")
 ## ```
-pub function sanitize_name(name) -> string
-    return sanitize_text_internal(name, "World")
+pub function make_display_info(name: string, x: int = 0, y: int = 0, w: int = 0, h: int = 0, scale_x100: int = 100, dpi: int = -1, refresh_milliHz: int = -1, bpp: int = -1, primary: int = 0, orientation: int = 0, color: string = "") -> DisplayInfo
+    return DisplayInfo {
+        name: sanitize_text_internal(name, "Display"),
+        x: x,
+        y: y,
+        w: w,
+        h: h,
+        scale_x100: scale_x100,
+        dpi: dpi,
+        refresh_milliHz: refresh_milliHz,
+        bpp: bpp,
+        primary: primary,
+        orientation: orientation,
+        color: color
+    }
 end
 
-## Factory constructor creating a validated `DisplayConfig` instance.
+## Builds an empty (unknown) `DisplayInfo` record.
 ##
-## Sanitizes the input name and sets sensible defaults for optional fields.
-##
-## ### Parameters
-## - `name`: Entity identifier name. Defaults to `"World"`.
-## - `count`: Counter or repetition limit. Defaults to `1`.
-## - `priority`: Priority tier. Defaults to `DisplayPriority.Normal`.
-## - `style`: Presentation style variant. Defaults to `DisplayStyle.Standard`.
-## - `enabled`: Active flag. Defaults to `1`.
-## - `tags`: Categorization tags array. Defaults to `[]`.
-##
-## ### Returns
-## A fully initialized `DisplayConfig` instance.
-##
-## ### Examples
-## ```alya
-## let cfg = make_config("Alice", 3, DisplayPriority.High)
-## ```
-pub function make_config(name = "World", count: int = 1, priority: int = DisplayPriority.Normal, style: int = DisplayStyle.Standard, enabled: int = 1, tags: array = []) -> DisplayConfig
-    let valid_name = sanitize_name(name)
-    return DisplayConfig {
-        name: valid_name,
+## Useful as a null-object fallback when no display is reachable.
+pub function empty_display() -> DisplayInfo
+    return DisplayInfo {
+        name: "",
+        x: 0,
+        y: 0,
+        w: -1,
+        h: -1,
+        scale_x100: -1,
+        dpi: -1,
+        refresh_milliHz: -1,
+        bpp: -1,
+        primary: 0,
+        orientation: 0,
+        color: ""
+    }
+end
+
+## Builds a `DisplayLayout` record from explicit values.
+pub function make_display_layout(x: int = 0, y: int = 0, w: int = 0, h: int = 0, count: int = 0, primary_name: string = "") -> DisplayLayout
+    return DisplayLayout {
+        x: x,
+        y: y,
+        w: w,
+        h: h,
         count: count,
-        priority: priority,
-        style: style,
-        enabled: enabled,
-        tags: tags
-    }
-end
-
-## Factory constructor creating a successful `DisplayResult`.
-##
-## ### Parameters
-## - `value`: The success payload to encapsulate.
-## - `message`: Descriptive success message string. Defaults to `"OK"`.
-##
-## ### Returns
-## A `DisplayResult` with status `0` and empty errors array.
-##
-## ### Examples
-## ```alya
-## let res = ok_result("Processed data", "Success")
-## ```
-pub function ok_result(value, message: string = "OK") -> DisplayResult
-    return DisplayResult {
-        value: value,
-        status: 0,
-        message: message,
-        errors: []
-    }
-end
-
-## Factory constructor creating a failed `DisplayResult`.
-##
-## ### Parameters
-## - `message`: Descriptive error message string.
-## - `errors`: Diagnostic error details array. Defaults to `[]`.
-##
-## ### Returns
-## A `DisplayResult` with status `1` and null value payload.
-##
-## ### Examples
-## ```alya
-## let err = error_result("Validation failed", ["Name is missing"])
-## ```
-pub function error_result(message: string, errors: array = []) -> DisplayResult
-    return DisplayResult {
-        value: null,
-        status: 1,
-        message: message,
-        errors: errors
-    }
-end
-
-## Factory constructor creating a `DisplayStats` metric record.
-##
-## ### Parameters
-## - `total`: Total observed items count.
-## - `passed`: Succeeded items count.
-## - `failed`: Failed items count.
-## - `skipped`: Skipped items count. Defaults to `0`.
-##
-## ### Returns
-## A populated `DisplayStats` record.
-##
-## ### Examples
-## ```alya
-## let stats = make_stats(100, 95, 5, 0)
-## ```
-pub function make_stats(total: int, passed: int, failed: int, skipped: int = 0) -> DisplayStats
-    return DisplayStats {
-        total: total,
-        passed: passed,
-        failed: failed,
-        skipped: skipped
+        primary_name: primary_name
     }
 end
 
 # ───────────────────────────────────────────────────────────────
-# Struct Methods: DisplayConfig
+# Struct Methods: DisplayInfo
 # ───────────────────────────────────────────────────────────────
 
-## Returns a formatted single-line string summary of this configuration.
+## Returns 1 when this record holds a known mode (`w > 0` and `h > 0`).
+pub function DisplayInfo.is_known(self: DisplayInfo) -> bool
+    if self.w > 0 and self.h > 0
+        return true
+    end
+    return false
+end
+
+## Returns 1 when this is the primary display, 0 otherwise.
+pub function DisplayInfo.is_primary(self: DisplayInfo) -> bool
+    if self.primary == true
+        return true
+    end
+    return false
+end
+
+## Returns the pixel area (`w * h`), or 0 for unknown modes.
+pub function DisplayInfo.area(self: DisplayInfo) -> int
+    if self.w <= 0 or self.h <= 0
+        return 0
+    end
+    return self.w * self.h
+end
+
+## Returns the scale factor (1.0 = 100%, 2.0 = Retina, -1.0 unknown).
+pub function DisplayInfo.scale(self: DisplayInfo) -> float
+    if self.scale_x100 <= 0
+        return -1.0
+    end
+    return self.scale_x100 / 100.0
+end
+
+## Returns the refresh rate in Hz (60.0, 144.0, -1.0 unknown).
+pub function DisplayInfo.refresh_hz(self: DisplayInfo) -> float
+    if self.refresh_milliHz <= 0
+        return -1.0
+    end
+    return self.refresh_milliHz / 1000.0
+end
+
+## Returns 1 when the panel reports HiDPI scale (>= 150%), 0 otherwise.
+pub function DisplayInfo.is_hidpi(self: DisplayInfo) -> bool
+    if self.scale_x100 >= 150
+        return true
+    end
+    return false
+end
+
+## Returns 1 when the panel is portrait (90/270 degrees), 0 otherwise.
+pub function DisplayInfo.is_portrait(self: DisplayInfo) -> bool
+    if self.orientation == 90 or self.orientation == 270
+        return true
+    end
+    return false
+end
+
+## Returns the mode string (`"1920x1080"`, `"unknown"` when not known).
+pub function DisplayInfo.resolution(self: DisplayInfo) -> string
+    if self.is_known() == false
+        return "unknown"
+    end
+    return "{self.w}x{self.h}"
+end
+
+## Returns a one-line summary (`"HDMI-1 1920x1080 @60Hz x1.00 [primary]"`).
 ##
 ## Implicitly satisfies the `Summarizable` interface.
-##
-## ### Parameters
-## - `self`: The target `DisplayConfig` instance.
-##
-## ### Returns
-## Formatted summary string in the form `"{name} (count: {count}, enabled: {enabled})"`.
-pub function DisplayConfig.summary(self: DisplayConfig) -> string
-    let active_str = when self.enabled
-        is true => "active"
-        else => "disabled"
+pub function DisplayInfo.summary(self: DisplayInfo) -> string
+    if self.is_known() == false
+        return "{self.name} unknown"
     end
-    return "{self.name} (count: {self.count}, {active_str})"
+    let tag = ""
+    if self.is_primary() == true
+        tag = " [primary]"
+    end
+    return "{self.name} {self.resolution()}{tag}"
 end
 
-## Returns a detailed multi-attribute description of this configuration.
+## Returns a detailed multi-field description of this display.
 ##
 ## Implicitly satisfies the `Describable` interface.
-##
-## ### Parameters
-## - `self`: The target `DisplayConfig` instance.
-##
-## ### Returns
-## Detailed descriptive string including priority and style codes.
-pub function DisplayConfig.describe(self: DisplayConfig) -> string
-    return "[Config] name={self.name}, count={self.count}, priority={self.priority}, style={self.style}"
+pub function DisplayInfo.describe(self: DisplayInfo) -> string
+    return "[Display] name={self.name}, origin=({self.x},{self.y}), mode={self.resolution()}, scale={self.scale_x100}, dpi={self.dpi}, refresh={self.refresh_milliHz}, bpp={self.bpp}, primary={self.primary}, orient={self.orientation}, color={self.color}"
 end
 
-## Validates whether this configuration conforms to essential operational constraints.
+## Returns 1 when this record is usable (known mode, sane scale/orientation).
 ##
 ## Implicitly satisfies the `Describable` interface.
-##
-## ### Parameters
-## - `self`: The target `DisplayConfig` instance.
-##
-## ### Returns
-## `1` if valid (non-empty name and count >= 0), `0` otherwise.
-pub function DisplayConfig.is_valid(self: DisplayConfig) -> int
-    if self.name == "" or self.count < 0
+pub function DisplayInfo.is_valid(self: DisplayInfo) -> bool
+    if self.is_known() == false
+        return false
+    end
+    if self.scale_x100 != -1 and self.scale_x100 <= 0
+        return false
+    end
+    if self.orientation != 0 and self.orientation != 90 and self.orientation != 180 and self.orientation != 270
         return false
     end
     return true
 end
 
-## Returns 1 if this configuration is enabled, 0 otherwise.
-##
-## ### Parameters
-## - `self`: The target `DisplayConfig` instance.
-##
-## ### Returns
-## `1` when enabled, `0` when disabled.
-pub function DisplayConfig.is_enabled(self: DisplayConfig) -> int
-    return self.enabled
-end
-
-## Returns a new configuration copy with an updated name.
-##
-## ### Parameters
-## - `self`: The current `DisplayConfig` instance.
-## - `new_name`: The replacement name string.
-##
-## ### Returns
-## A new `DisplayConfig` instance with updated name.
-pub function DisplayConfig.with_name(self: DisplayConfig, new_name) -> DisplayConfig
-    return DisplayConfig {
-        name: sanitize_name(new_name),
-        count: self.count,
-        priority: self.priority,
-        style: self.style,
-        enabled: self.enabled,
-        tags: self.tags
-    }
-end
-
-## Returns a new configuration copy with an updated priority level.
-##
-## ### Parameters
-## - `self`: The current `DisplayConfig` instance.
-## - `new_priority`: New priority level from `DisplayPriority`.
-##
-## ### Returns
-## A new `DisplayConfig` instance with updated priority.
-pub function DisplayConfig.with_priority(self: DisplayConfig, new_priority: int) -> DisplayConfig
-    return DisplayConfig {
-        name: self.name,
-        count: self.count,
-        priority: new_priority,
-        style: self.style,
-        enabled: self.enabled,
-        tags: self.tags
-    }
-end
-
 # ───────────────────────────────────────────────────────────────
-# Struct Methods: DisplayResult
+# Struct Methods: DisplayLayout
 # ───────────────────────────────────────────────────────────────
 
-## Returns 1 if this result represents a successful operation.
-##
-## ### Parameters
-## - `self`: The target `DisplayResult` instance.
-##
-## ### Returns
-## `1` when status is `0`, `0` otherwise.
-pub function DisplayResult.is_ok(self: DisplayResult) -> int
-    if self.status == 0
+## Returns 1 when the layout covers at least one display.
+pub function DisplayLayout.is_known(self: DisplayLayout) -> bool
+    if self.count > 0 and self.w > 0 and self.h > 0
         return true
     end
     return false
 end
 
-## Returns 1 if this result represents an error condition.
+## Returns the virtual-desktop area (`w * h`), or 0 when unknown.
+pub function DisplayLayout.area(self: DisplayLayout) -> int
+    if self.w <= 0 or self.h <= 0
+        return 0
+    end
+    return self.w * self.h
+end
+
+## Returns a one-line summary (`"2 displays 3840x1080 @0,0"`).
 ##
-## ### Parameters
-## - `self`: The target `DisplayResult` instance.
+## Implicitly satisfies the `Summarizable` interface.
+pub function DisplayLayout.summary(self: DisplayLayout) -> string
+    if self.is_known() == false
+        return "no displays"
+    end
+    let plural = "s"
+    if self.count == 1
+        plural = ""
+    end
+    return "{self.count} display{plural} {self.w}x{self.h} @{self.x},{self.y}"
+end
+
+## Returns a detailed description of this layout.
 ##
-## ### Returns
-## `1` when status is non-zero, `0` when status is `0`.
-pub function DisplayResult.is_error(self: DisplayResult) -> int
-    if self.status != 0
+## Implicitly satisfies the `Describable` interface.
+pub function DisplayLayout.describe(self: DisplayLayout) -> string
+    return "[Layout] origin=({self.x},{self.y}), size={self.w}x{self.h}, count={self.count}, primary={self.primary_name}"
+end
+
+## Returns 1 when this layout is usable (count matches positive size).
+##
+## Implicitly satisfies the `Describable` interface.
+pub function DisplayLayout.is_valid(self: DisplayLayout) -> bool
+    if self.count < 0
+        return false
+    end
+    if self.count == 0
         return true
     end
-    return false
-end
-
-## Unwraps the result's message string, or returns a fallback string on error.
-##
-## ### Parameters
-## - `self`: The target `DisplayResult` instance.
-## - `fallback`: Alternative string returned if this result represents an error.
-##
-## ### Returns
-## `message` on success, or `fallback` on error.
-pub function DisplayResult.unwrap_or(self: DisplayResult, fallback: string) -> string
-    if self.status == 0
-        return self.message
-    end
-    return fallback
-end
-
-# ───────────────────────────────────────────────────────────────
-# Struct Methods: DisplayStats
-# ───────────────────────────────────────────────────────────────
-
-## Returns the total number of checked items (passed + failed).
-##
-## ### Parameters
-## - `self`: The target `DisplayStats` instance.
-##
-## ### Returns
-## Integer sum of passed and failed items.
-pub function DisplayStats.total_checked(self: DisplayStats) -> int
-    return self.passed + self.failed
-end
-
-## Computes and returns the success rate percentage as a formatted string.
-##
-## ### Parameters
-## - `self`: The target `DisplayStats` instance.
-##
-## ### Returns
-## Formatted percentage string (e.g. `"90%"`).
-pub function DisplayStats.success_rate(self: DisplayStats) -> string
-    let checked = self.passed + self.failed
-    return format_percent_internal(self.passed, checked)
+    return self.is_known()
 end

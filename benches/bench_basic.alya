@@ -7,71 +7,77 @@ import "../src/lib.alya" as pkg
 function main()
     let runner = bench_runner("display Micro-Benchmarks")
 
-    # Bench 1: hello() facade function — 100k iterations
-    bench_start(runner, 100000)
+    # Bench 1: native enumeration (headless-safe, small N: opens/closes display)
+    bench_start(runner, 200)
     let i = 0
-    while i < 100000
-        pkg::hello("Alya")
+    while i < 200
+        pkg::display_count()
         i += 1
     end
-    bench_stop(runner, "hello() 100k calls")
+    bench_stop(runner, "display_count() 200 calls")
 
-    # Bench 2: process() default call — 100k iterations
-    bench_start(runner, 100000)
+    # Bench 2: full enumeration + parse
+    bench_start(runner, 200)
     let j = 0
-    while j < 100000
-        pkg::process()
+    while j < 200
+        pkg::displays()
         j += 1
     end
-    bench_stop(runner, "process() default 100k calls")
+    bench_stop(runner, "displays() 200 calls")
 
-    # Bench 3: make_config + format_config — 50k iterations
+    # Bench 3: synthetic record + format_display — 50k iterations
+    let d = pkg::make_display_info("HDMI-1", 0, 0, 1920, 1080, 100, 96, 60000, 32, 1, 0, "sRGB")
     bench_start(runner, 50000)
     let k = 0
     while k < 50000
-        let cfg = pkg::new_config("bench", 1, pkg::DisplayPriority.High, pkg::DisplayStyle.Formal)
-        pkg::core_format_custom(cfg)
+        pkg::format_display(d)
         k += 1
     end
-    bench_stop(runner, "new_config + format_custom 50k calls")
+    bench_stop(runner, "format_display() 50k calls")
 
-    # Bench 4: process_batch with 10-element array — 10k iterations
-    let labels = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]
-    bench_start(runner, 10000)
-    let m = 0
-    while m < 10000
-        pkg::process_batch(labels)
-        m += 1
-    end
-    bench_stop(runner, "process_batch 10-item list 10k calls")
-
-    # Bench 5: struct method cfg.summary() — 200k iterations
-    let summ_cfg = pkg::new_config("summary-bench", 5)
+    # Bench 4: struct methods (area + scale + refresh) — 200k iterations
     bench_start(runner, 200000)
     let s = 0
     while s < 200000
-        summ_cfg.summary()
+        d.area()
+        d.scale()
+        d.refresh_hz()
         s += 1
     end
-    bench_stop(runner, "cfg.summary() 200k calls")
+    bench_stop(runner, "area/scale/refresh 200k calls")
 
-    # Bench 6: clamp() utility — 500k iterations
-    bench_start(runner, 500000)
+    # Bench 5: formatters (scale + dpi + refresh) — 100k iterations
+    bench_start(runner, 100000)
     let c = 0
-    while c < 500000
-        pkg::clamp(c, 0, 100)
+    while c < 100000
+        pkg::format_scale(150)
+        pkg::format_dpi(96)
+        pkg::format_refresh(60000)
         c += 1
     end
-    bench_stop(runner, "clamp() utility 500k calls")
+    bench_stop(runner, "format helpers 100k calls")
 
-    # Bench 7: repeat_string() utility — 10k iterations
-    bench_start(runner, 10000)
-    let r = 0
-    while r < 10000
-        pkg::repeat_string("bench", 10)
-        r += 1
+    # Bench 6: metrics (effective + filters over 3-item list) — 20k iterations
+    let trio = [d, pkg::make_display_info("4K", 1920, 0, 3840, 2160, 200, 163, 144000, 32, 0, 0, ""), pkg::make_display_info("Side", 0, 0, 1080, 1920, 100, 96, 60000, 32, 0, 90, "")]
+    bench_start(runner, 20000)
+    let m = 0
+    while m < 20000
+        pkg::effective_size(d)
+        pkg::hidpi_only(trio)
+        pkg::max_refresh_hz(trio)
+        m += 1
     end
-    bench_stop(runner, "repeat_string() 10k calls")
+    bench_stop(runner, "metrics over trio 20k calls")
+
+    # Bench 7: virtual desktop + snapshot — 5k iterations
+    bench_start(runner, 5000)
+    let v = 0
+    while v < 5000
+        pkg::format_snapshot(trio)
+        pkg::make_display_layout(0, 0, 3840, 2160, 2, "HDMI-1")
+        v += 1
+    end
+    bench_stop(runner, "snapshot/layout 5k calls")
 
     bench_summary(runner)
 end

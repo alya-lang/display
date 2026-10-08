@@ -1,0 +1,21 @@
+## display Core String Utilities
+##
+## Part of the Alya Language package ecosystem (https://github.com/alya-lang).
+## FFI string ownership helpers.
+
+## Returns a private heap copy of s.
+##
+## Native FFI `str` results are zero-copy views into C static buffers: the
+## bytes change under us when the same native function runs again (e.g. a
+## second `display_at()` call overwrites the first entry text). String
+## operations (concat, slicing) pin heap copies, so route every stored or
+## returned FFI string through this helper at the module boundary.
+##
+## ### Parameters
+## - `s`: Source string (possibly an FFI view).
+##
+## ### Returns
+## Private copy safe to hold across further FFI calls.
+pub function str_owned(s: string) -> string
+    return "" + s
+end

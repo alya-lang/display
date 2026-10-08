@@ -11,15 +11,17 @@ Cross-platform display enumeration: monitors, resolution, DPI, scale, refresh ra
 
 ## 🌟 Features
 
-- ⚡ **Lightweight & High Performance**: Minimal memory overhead, zero runtime bloat, and fast native execution
-- 🧩 **Modular Architecture**: Layered multi-module design featuring a clean public facade (`src/lib.alya`), rich data models (`src/types.alya`), and encapsulated core formatters (`src/core/formatter.alya`)
-- 🔒 **Public/Private Visibility (`pub`)**: Fine-grained export control with `pub` for public functions, structs, and enums, keeping internal helper functions private and encapsulated
-- 🎭 **Structural Duck Typing & Interfaces**: Dynamic interface dispatch (`Summarizable`, `Describable`) without brittle inheritance hierarchies
-- 📦 **Rich Domain Models & Enums**: Idiomatic `enum` types (`DisplayStatus`, `DisplayPriority`, `DisplayStyle`) and typed data containers (`DisplayConfig`, `DisplayResult`, `DisplayStats`)
-- 🎯 **Advanced Pattern Matching**: Clean branching with `when` expressions, range matching, and condition guards
-- 🛡️ **Defensive Result Pattern**: Structured error handling and outcome encapsulation with `ok_result` and `error_result`
-- 🧪 **Enterprise Test & Benchmark Suite**: 100% test coverage with standard assertions (`std/test`) and micro-benchmarking (`std/test` bench runner)
-- 🚩 **Feature-Gated API Slices**: Optional capability slices via `[features]` in `alya.toml` (`default = ["extras"]`) and `@cfg(feature = "extras")` gating with a `@cfg(not(feature = "extras"))` fallback stub (see `src/core/extras.alya`)
+- 🖥️ **Display Enumeration**: Monitor count, per-display records, primary detection, and name lookup on Windows, macOS, and Linux
+- 📐 **Resolution & Geometry**: Device-pixel modes, virtual-desktop origins (negative-aware), bounding-box union, and total pixel counts
+- 🔍 **DPI & Scale/Zoom**: Per-monitor DPI, scale percent (`100` = 1.00x, `200` = Retina), effective logical sizes, and HiDPI classification
+- ⚡ **Refresh & Color Depth**: Milli-Hz refresh rates, bits-per-pixel, panel orientation (0/90/180/270), and OS color profile labels
+- 🎨 **Color Profiles**: ICM filename on Windows, color-space label on macOS (`sRGB`, `Display P3`), honest `""` when unavailable
+- 🧮 **Derived Metrics**: Effective sizes, physical inches, portrait/HiDPI/high-refresh filters, and max DPI/Hz queries (pure, headless-safe)
+- 🛋️ **Headless-Safe**: `0` / `[]` / `null` on CI, Docker, and SSH — live assertions tolerate zero displays, synthetic vectors cover the rest
+- 🧩 **Modular Architecture**: Layered multi-module design with a clean public facade (`src/lib.alya`) and canonical models (`src/types.alya`)
+- 🔒 **Public/Private Visibility (`pub`)**: Fine-grained export control keeping internals encapsulated
+- 🧪 **Enterprise Test & Benchmark Suite**: Real-hardware assertions (`std/test`) and micro-benchmarking
+- 🚩 **Feature-Gated Extras**: Optional analytics slice (`hidpi_displays`, `scaling_report`, `layout_report`) via `[features]` and `@cfg`
 
 ---
 
@@ -31,19 +33,27 @@ display/
 ├── .editorconfig           # Uniform formatting rules across IDEs and editors
 ├── .gitignore              # Ecosystem standard ignore filters
 ├── .vscode/                # VS Code workspace settings, DAP launch configurations & tasks
-├── alya.toml               # Package manifest with dependencies, [features] and optional [build]
-├── c/                      # (Optional) Native C sources for zero-dependency FFI packages
+├── alya.toml               # Package manifest with dependencies, [features] and [build]
+├── c/                      # Native C sources for zero-dependency FFI packages
+│   ├── display.h           # Shared native declarations (count/at wire contract)
+│   ├── display.c           # Common engine (smoke test + unknown-target stubs)
+│   ├── win32_display.c     # Windows EnumDisplayMonitors/DPI/ICM backend
+│   ├── cocoa_display.c     # macOS CoreGraphics backend (bounds/mode/DPI/color)
+│   └── linux_display.c     # Linux X11 + dlopen(XRandR) backend with screen fallback
 ├── src/
-│   ├── lib.alya            # Public API facade (pub exports, re-exports & pipeline runners)
-│   ├── types.alya          # Data models, pub enums, pub structs, and struct methods
-│   ├── ffi.alya            # (Optional) Native extern "C" declarations
+│   ├── lib.alya            # Public API facade (enumeration, metrics, snapshots)
+│   ├── types.alya          # Data models (DisplayInfo, DisplayLayout, enums, methods)
+│   ├── ffi.alya            # Native extern "C" declarations
+│   ├── display.alya        # Enumeration, wire parsing, primary/layout queries
+│   ├── metrics.alya        # Derived metrics (effective size, filters, maxima)
 │   └── core/               # Subdirectory module hierarchy
-│       ├── formatter.alya  # Domain formatting routines, salutation builders & pattern matchers
-│       └── extras.alya     # Feature-gated (`extras`) optional API slice with `@cfg` gating
+│       ├── strutil.alya    # FFI string ownership helper (str_owned)
+│       ├── formatter.alya  # Scale/DPI/refresh/snapshot formatters
+│       └── extras.alya     # Feature-gated analytics (HiDPI, scaling, layout reports)
 ├── examples/
-│   └── demo.alya           # Comprehensive runnable walkthrough of all package capabilities
+│   └── demo.alya           # Runnable walkthrough of all package capabilities
 ├── tests/
-│   └── test_basic.alya     # Automated test suite with 100% feature coverage
+│   └── test_basic.alya     # Automated test suite (deterministic + headless-safe live)
 └── benches/
     └── bench_basic.alya    # Micro-benchmarks measuring performance and throughput
 ```
@@ -69,6 +79,24 @@ alya add display --git https://github.com/alya-lang/display --branch main
 alya install
 ```
 
+### Package Features
+
+| Feature | Default | Description |
+|:---|:---:|:---|
+| `extras` | ✅ | Advanced analytics (`hidpi_displays`, `portrait_displays`, `high_refresh_displays`, `scaling_report`, `layout_report`). |
+
+`summary()` and `details()` work without any feature. Enumeration, metrics, and formatters always work.
+
+```bash
+# Full build (default)
+alya install
+alya test
+
+# Slim build (core enumeration only)
+alya install --no-default-features
+alya test --no-default-features
+```
+
 ---
 
 ## 🚀 Quick Start
@@ -77,18 +105,20 @@ alya install
 import "display" as pkg
 
 function main()
-    # 1. Basic facade call with default parameter
-    let greeting = pkg::hello()
-    say f"Greeting:  {greeting}"
+    # 1. Live enumeration (headless-safe: [] on CI/Docker/SSH)
+    let list = pkg::displays()
+    say f"Count: {pkg::display_count()}"
 
-    # 2. Struct configuration with priority, style, and methods
-    let cfg = pkg::new_config("Community", 5, pkg::DisplayPriority.High, pkg::DisplayStyle.Formal)
-    say f"Summary:   {cfg.summary()}"
-    say f"Formatted: {pkg::core_format_custom(cfg)}"
+    # 2. Primary display + virtual desktop
+    let prim = pkg::primary_or_first()
+    if prim is not null
+        say f"Primary: {pkg::format_display(prim)}"
+    end
+    say f"Layout:  {pkg::layout().summary()}"
 
-    # 3. Processing pipeline returning Result model
-    let res = pkg::process("Analytics", 3, pkg::DisplayPriority.Critical)
-    say f"Outcome:   {res.message}"
+    # 3. Synthetic record (works everywhere)
+    let hd = pkg::make_display_info("HDMI-1", 0, 0, 1920, 1080, 100, 96, 60000, 32, 1, 0, "sRGB")
+    say f"Demo:    {pkg::format_display(hd)}"
 end
 
 main()
@@ -100,45 +130,95 @@ main()
 
 | Symbol | Visibility | Description |
 |---|---|---|
-| `hello(name = "World")` | `pub function` | Returns a formatted greeting string. Defaults to `"World"` if null or empty. |
-| `new_config(name, count, priority, style)` | `pub function` | Factory constructing a `DisplayConfig` with sensible defaults. |
-| `make_config(name, count, priority, style, enabled, tags)` | `pub function` | Full constructor for `DisplayConfig`. |
-| `process(label, count, priority)` | `pub function` | Runs processing pipeline, returning an `ok_result` `DisplayResult`. |
-| `process_batch(labels)` | `pub function` | Formats an array of labels in batch, returning an array of strings. |
-| `ok_result(value, message)` | `pub function` | Constructs a successful `DisplayResult` container (`status = 0`). |
-| `error_result(message, errors)` | `pub function` | Constructs a failed `DisplayResult` container (`status = 1`). |
-| `make_stats(total, passed, failed, skipped)` | `pub function` | Constructs a `DisplayStats` metrics record. |
-| `format_summary(cfg)` | `pub function` | Formats summary of a config instance (satisfies `Summarizable`). |
-| `format_description(cfg)` | `pub function` | Formats description of a config instance (satisfies `Describable`). |
-| `format_config(config)` | `pub function` | Multi-field formatter producing descriptive overview of a `DisplayConfig`. |
-| `format_result(result)` | `pub function` | Formats a `DisplayResult` into `[OK]` or `[ERROR]` status line. |
-| `format_stats(stats)` | `pub function` | Formats total checked items and success rate percentage. |
-| `clamp(n, min_val, max_val)` | `pub function` | Clamps an integer value to the closed range `[min_val, max_val]`. |
-| `pluralize(n, singular, plural)` | `pub function` | Pattern-matches count to return singular or plural noun form. |
-| `repeat_string(label, count)` | `pub function` | Repeats a string into an array of `count` items. |
-| `extra_greeting(name = "World")` | `pub function` (`extras` feature, default-on) | Enthusiastic greeting slice gated by `@cfg(feature = "extras")`; stub throws a descriptive error when the feature is off. |
+| `displays()` | `pub function` | Display records for every monitor (possibly empty headless). |
+| `display_count()` | `pub function` | Number of enumerated displays (0 when headless). |
+| `display_at(i)` | `pub function` | Display at enumeration index `i`, or null when missing. |
+| `primary_index()` | `pub function` | Enumeration index of the primary display (-1 when none). |
+| `primary()` | `pub function` | Primary display record, or null when none. |
+| `primary_or_first()` | `pub function` | Primary display, or first as fallback (null when none). |
+| `has_display()` | `pub function` | 1 when at least one display is reachable, 0 otherwise. |
+| `headless()` | `pub function` | 1 when no display server is reachable, 0 otherwise. |
+| `names()` | `pub function` | All display names in enumeration order. |
+| `find(name)` | `pub function` | Display with the given OS name, or null when absent. |
+| `largest()` | `pub function` | Largest display by pixel area (null when none). |
+| `total_px()` | `pub function` | Sum of all display pixel areas (0 when headless). |
+| `layout()` | `pub function` | Virtual-desktop bounding box over all displays. |
+| `effective(d)` | `pub function` | Effective logical size `[w, h]` after scale division. |
+| `max_hz(list)` | `pub function` | Highest refresh rate in Hz (-1.0 when none known). |
+| `max_display_dpi(list)` | `pub function` | Highest DPI in the list (-1 when none known). |
+| `effective_size(d)` | `pub function` | Effective size `[w, h]` (unknown scale keeps pixels). |
+| `has_dpi(d)` | `pub function` | 1 when the display reports a known DPI. |
+| `has_refresh(d)` | `pub function` | 1 when the display reports a known refresh rate. |
+| `has_color_profile(d)` | `pub function` | 1 when the display reports a color profile label. |
+| `portrait_only(list)` | `pub function` | Filters to portrait panels (90/270 degrees). |
+| `hidpi_only(list)` | `pub function` | Filters to HiDPI panels (scale >= 150%). |
+| `refresh_at_least(list, min_hz)` | `pub function` | Filters to panels at or above `min_hz`. |
+| `max_refresh_hz(list)` | `pub function` | Highest refresh rate in Hz (-1.0 when none known). |
+| `max_dpi(list)` | `pub function` | Highest DPI in the list (-1 when none known). |
+| `summary()` | `pub function` | One-line human-readable display snapshot. |
+| `details()` | `pub function` | Detailed multi-line display report. |
+| `format_scale(n)` | `pub function` | Formats scale percent as `"1.5x"`, `"unknown"` for -1. |
+| `format_dpi(dpi)` | `pub function` | Formats DPI as `"96 dpi"`. |
+| `format_refresh(milliHz)` | `pub function` | Formats refresh as `"60Hz"`, `"59.94Hz"`. |
+| `format_display(d)` | `pub function` | One-line display overview with mode/Hz/scale/DPI/profile. |
+| `format_display_list(list)` | `pub function` | One entry per line (`"(no displays)"` when empty). |
+| `format_layout(layout)` | `pub function` | Formats a virtual-desktop layout summary. |
+| `format_snapshot(list)` | `pub function` | Full one-line snapshot over a display list. |
+| `format_report(list, layout)` | `pub function` | Multi-line report (per display + layout line). |
+| `make_display_info(...)` | `pub function` | Full constructor for `DisplayInfo` (testing/snapshots). |
+| `empty_display()` | `pub function` | Null-object unknown `DisplayInfo` record. |
+| `make_display_layout(...)` | `pub function` | Constructor for `DisplayLayout`. |
+| `hidpi_displays()` | `pub function` (`extras` feature, default-on) | HiDPI displays in enumeration order. |
+| `portrait_displays()` | `pub function` (`extras` feature, default-on) | Portrait displays in enumeration order. |
+| `high_refresh_displays(min_hz)` | `pub function` (`extras` feature, default-on) | Displays at or above `min_hz` (default 120Hz). |
+| `scaling_report()` | `pub function` (`extras` feature, default-on) | One-line scaling report (HiDPI share, max scale/DPI). |
+| `layout_report()` | `pub function` (`extras` feature, default-on) | One-line layout diagnostic (desktop + primary + px). |
+| `c_add(a, b)` | `pub function` | Bundled C engine smoke test via FFI. |
+| `DisplayInfo` | `pub struct` | Display model (`name`, `x`, `y`, `w`, `h`, `scale_x100`, `dpi`, `refresh_milliHz`, `bpp`, `primary`, `orientation`, `color`). |
+| `DisplayInfo.is_known()` | `pub method` | 1 when mode is known (`w > 0` and `h > 0`). |
+| `DisplayInfo.is_primary()` | `pub method` | 1 when primary, 0 otherwise. |
+| `DisplayInfo.area()` | `pub method` | Pixel area (`w * h`), 0 when unknown. |
+| `DisplayInfo.scale()` | `pub method` | Scale factor (1.0, 2.0, -1.0 unknown). |
+| `DisplayInfo.refresh_hz()` | `pub method` | Refresh in Hz (-1.0 unknown). |
+| `DisplayInfo.is_hidpi()` | `pub method` | 1 when scale >= 150%. |
+| `DisplayInfo.is_portrait()` | `pub method` | 1 when orientation is 90/270. |
+| `DisplayInfo.resolution()` | `pub method` | Mode string (`"1920x1080"`, `"unknown"`). |
+| `DisplayInfo.summary()` | `pub method` | One-line summary (satisfies `Summarizable`). |
+| `DisplayInfo.describe()` | `pub method` | Detailed description (satisfies `Describable`). |
+| `DisplayInfo.is_valid()` | `pub method` | Usability guard (satisfies `Describable`). |
+| `DisplayLayout` | `pub struct` | Virtual-desktop model (`x`, `y`, `w`, `h`, `count`, `primary_name`). |
+| `DisplayLayout.is_known()` | `pub method` | 1 when covering at least one display. |
+| `DisplayLayout.area()` | `pub method` | Desktop area, 0 when unknown. |
+| `DisplayLayout.summary()` | `pub method` | One-line summary (satisfies `Summarizable`). |
+| `DisplayLayout.describe()` | `pub method` | Detailed description (satisfies `Describable`). |
+| `DisplayLayout.is_valid()` | `pub method` | Usability guard (satisfies `Describable`). |
+| `DisplayOrientation` | `pub enum` | Rotations (`Landscape = 0`, `Portrait = 90`, `Inverted = 180`, `Flipped = 270`). |
+| `DisplayScale` | `pub enum` | Buckets (`Native = 100`, `Scaled = 125`, `HiDpi = 150`, `Retina = 200`). |
 | `Summarizable` | `pub interface` | Structural contract requiring `summary(self) -> string`. |
 | `Describable` | `pub interface` | Structural contract requiring `describe(self) -> string` and `is_valid(self) -> int`. |
-| `DisplayStatus` | `pub enum` | Lifecycle status codes (`Pending = 0`, `Active = 1`, `Archived = 2`, `Error = 3`). |
-| `DisplayPriority` | `pub enum` | Priority tiers (`Low = 0`, `Normal = 1`, `High = 2`, `Critical = 3`). |
-| `DisplayStyle` | `pub enum` | Presentation styles (`Standard = 0`, `Formal = 1`, `Casual = 2`). |
-| `DisplayConfig` | `pub struct` | Primary configuration model (`name`, `count`, `priority`, `style`, `enabled`, `tags`). |
-| `DisplayConfig.summary()` | `pub method` | Single-line formatted summary (satisfies `Summarizable`). |
-| `DisplayConfig.describe()` | `pub method` | Detailed multi-field description (satisfies `Describable`). |
-| `DisplayConfig.is_valid()` | `pub method` | Validation guard returning 1 if valid, 0 otherwise. |
-| `DisplayConfig.is_enabled()` | `pub method` | Returns 1 if active, 0 if disabled. |
-| `DisplayConfig.with_name(new_name)` | `pub method` | Immutable copy with updated name. |
-| `DisplayConfig.with_priority(new_prio)` | `pub method` | Immutable copy with updated priority tier. |
-| `DisplayResult` | `pub struct` | Operation outcome model (`value`, `status`, `message`, `errors`). |
-| `DisplayResult.is_ok()` | `pub method` | Returns 1 if successful (`status == 0`), 0 otherwise. |
-| `DisplayResult.is_error()` | `pub method` | Returns 1 if error (`status != 0`), 0 otherwise. |
-| `DisplayResult.unwrap_or(fallback)` | `pub method` | Returns message on success, or fallback on error. |
-| `DisplayStats` | `pub struct` | Run statistics model (`total`, `passed`, `failed`, `skipped`). |
-| `DisplayStats.total_checked()` | `pub method` | Sum of passed and failed items count. |
-| `DisplayStats.success_rate()` | `pub method` | Computed percentage string (e.g. `"95%"`). |
 
 > [!TIP]
-> **Internal Helpers & Documentation:** Public symbols are documented with `##` Markdown docstrings, enabling automatic API documentation generation via `alya doc`. Private functions such as `build_salutation` and `build_priority_label` in `src/core/formatter.alya` are not annotated with `pub` and remain encapsulated within their respective modules.
+> **Internal Helpers & Documentation:** Public symbols are documented with `##` Markdown docstrings, enabling automatic API documentation generation via `alya doc`. Private helpers remain encapsulated without `pub`.
+>
+> [!NOTE]
+> **FFI string ownership:** Native `str` results are zero-copy views into C static buffers. Every stored or returned FFI string is pinned to a heap copy at the module boundary via `str_owned()` (`src/core/strutil.alya`), so snapshots stay valid across further FFI calls.
+
+---
+
+### 🖥️ Platform Coverage
+
+| Capability | Windows | macOS | Linux |
+|---|---|---|---|
+| Enumeration | `EnumDisplayMonitors` | `CGGetActiveDisplayList` | XRandR via `dlopen` + X-screen fallback |
+| Bounds/origin | `GetMonitorInfo` (`rcMonitor`) | `CGDisplayBounds` | CRTC `x/y/width/height` |
+| Primary | `MONITORINFOF_PRIMARY` | `CGDisplayIsMain` | `XRRGetOutputPrimary` (first fallback) |
+| DPI | `GetDpiForMonitor` → `GetDeviceCaps` | Physical size (`CGDisplayScreenSize`) | Output `mm_width` → screen average |
+| Scale | `dpi * 100 / 96` | Pixel ÷ points width (Retina 200) | `GDK_SCALE` or 100 (honest default) |
+| Refresh | `ENUM_CURRENT_SETTINGS` frequency | `CGDisplayMode` refresh | RandR mode `dotClock/(h*v)` |
+| Bit depth | `dmBitsPerPel` | Pixel-encoding string | `DefaultDepth` |
+| Orientation | `dmDisplayOrientation` | `CGDisplayRotation` | CRTC rotation bits |
+| Color profile | ICM filename (`GetICMProfile`) | Color-space name (`sRGB`, `Display P3`) | — (`""`, X11 has no standard query) |
+| Headless | 0 monitors | 0 displays | No `DISPLAY` or `XOpenDisplay` fails → 0 |
 
 ---
 
