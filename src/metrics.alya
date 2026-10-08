@@ -145,9 +145,10 @@ end
 
 ## Filters a display list to panels refreshing at or above min_hz.
 ##
-## Compares integer milli-Hz: float function params miscompile in `>=`
-## on this toolchain (probe: `ge_param(60.0, 200.0)` wrongly true), so the
-## threshold is scaled once and all filtering stays in exact integers.
+## Compares integer milli-Hz: float `>=` on function params miscompiled on
+## pre-fix toolchains (alya-lang/alya#149, fixed upstream), so the threshold
+## is scaled once and all filtering stays in exact integers. Retained for
+## exactness and for compatibility with the oldest supported toolchain.
 pub function refresh_at_least(list: array, min_hz: float = 60.0) -> array
     let out = []
     if list is null
