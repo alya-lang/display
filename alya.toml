@@ -1,6 +1,6 @@
 [package]
 name = "display"
-version = "0.2.1"
+version = "0.1.0"
 alya-version = "0.0.20"
 entry = "src/lib.alya"
 description = "Cross-platform display enumeration: monitors, resolution, DPI, scale, refresh rate, and color info for Alya"

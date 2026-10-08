@@ -205,7 +205,7 @@ const char *display_native_at(int index) {
     return g_entry;
 }
 
-/* ---- v0.2.0: mode lists, work area, connector, GPU, HDR ---- */
+/* ---- Display modes, work area, connector, GPU, HDR ---- */
 
 #define DISPLAY_MAX_MODES 256
 
