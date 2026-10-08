@@ -145,20 +145,18 @@ end
 
 ## Filters a display list to panels refreshing at or above min_hz.
 ##
-## Compares integer milli-Hz: float `>=` on function params miscompiled on
-## pre-fix toolchains (alya-lang/alya#149, fixed upstream), so the threshold
-## is scaled once and all filtering stays in exact integers. Retained for
-## exactness and for compatibility with the oldest supported toolchain.
+## Direct float comparison (alya-lang/alya#149, fixed and re-released in
+## 0.0.20): both sides derive from integer milli-Hz, so boundary
+## comparisons stay consistent without manual scaling.
 pub function refresh_at_least(list: array, min_hz: float = 60.0) -> array
     let out = []
     if list is null
         return out
     end
-    let thr = to_int(min_hz * 1000.0)
     let i = 0
     while i < len(list)
         let info: DisplayInfo = list[i]
-        if info.refresh_milliHz >= thr
+        if info.refresh_hz() >= min_hz
             out.push(info)
         end
         i += 1
