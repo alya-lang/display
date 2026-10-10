@@ -347,7 +347,7 @@ pub function DisplayInfo.resolution(self: DisplayInfo) -> string
     if self.is_known() == false
         return "unknown"
     end
-    return "{self.w}x{self.h}"
+    return f"{self.w}x{self.h}"
 end
 
 ## Returns a one-line summary (`"HDMI-1 1920x1080 @60Hz x1.00 [primary]"`).
@@ -355,20 +355,20 @@ end
 ## Implicitly satisfies the `Summarizable` interface.
 pub function DisplayInfo.summary(self: DisplayInfo) -> string
     if self.is_known() == false
-        return "{self.name} unknown"
+        return f"{self.name} unknown"
     end
     let tag = ""
     if self.is_primary() == true
         tag = " [primary]"
     end
-    return "{self.name} {self.resolution()}{tag}"
+    return f"{self.name} {self.resolution()}{tag}"
 end
 
 ## Returns a detailed multi-field description of this display.
 ##
 ## Implicitly satisfies the `Describable` interface.
 pub function DisplayInfo.describe(self: DisplayInfo) -> string
-    return "[Display] name={self.name}, origin=({self.x},{self.y}), mode={self.resolution()}, scale={self.scale_x100}, dpi={self.dpi}, refresh={self.refresh_milliHz}, bpp={self.bpp}, primary={self.primary}, orient={self.orientation}, color={self.color}"
+    return f"[Display] name={self.name}, origin=({self.x},{self.y}), mode={self.resolution()}, scale={self.scale_x100}, dpi={self.dpi}, refresh={self.refresh_milliHz}, bpp={self.bpp}, primary={self.primary}, orient={self.orientation}, color={self.color}"
 end
 
 ## Returns 1 when this record is usable (known mode, sane scale/orientation).
@@ -400,7 +400,7 @@ pub function DisplayInfo.work_summary(self: DisplayInfo) -> string
     if self.has_work_area() == false
         return "unknown"
     end
-    return "{self.work_w}x{self.work_h} @{self.work_x},{self.work_y}"
+    return f"{self.work_w}x{self.work_h} @{self.work_x},{self.work_y}"
 end
 
 ## Returns 1 when HDR is active/capable, 0 otherwise (unknown counts as 0).
@@ -495,14 +495,14 @@ pub function DisplayLayout.summary(self: DisplayLayout) -> string
     if self.count == 1
         plural = ""
     end
-    return "{self.count} display{plural} {self.w}x{self.h} @{self.x},{self.y}"
+    return f"{self.count} display{plural} {self.w}x{self.h} @{self.x},{self.y}"
 end
 
 ## Returns a detailed description of this layout.
 ##
 ## Implicitly satisfies the `Describable` interface.
 pub function DisplayLayout.describe(self: DisplayLayout) -> string
-    return "[Layout] origin=({self.x},{self.y}), size={self.w}x{self.h}, count={self.count}, primary={self.primary_name}"
+    return f"[Layout] origin=({self.x},{self.y}), size={self.w}x{self.h}, count={self.count}, primary={self.primary_name}"
 end
 
 ## Returns 1 when this layout is usable (count matches positive size).
@@ -551,7 +551,7 @@ pub function DisplayMode.resolution(self: DisplayMode) -> string
     if self.is_known() == false
         return "unknown"
     end
-    return "{self.w}x{self.h}"
+    return f"{self.w}x{self.h}"
 end
 
 ## Returns a one-line summary (`"1920x1080 @60Hz"`, `"1920x1080"` when Hz unknown).
@@ -565,9 +565,9 @@ pub function DisplayMode.summary(self: DisplayMode) -> string
         let whole = self.refresh_milliHz / 1000
         let rest = self.refresh_milliHz - whole * 1000
         if rest == 0
-            return "{self.resolution()} @{whole}Hz"
+            return f"{self.resolution()} @{whole}Hz"
         end
-        return "{self.resolution()} @{self.refresh_hz()}Hz"
+        return f"{self.resolution()} @{self.refresh_hz()}Hz"
     end
     return self.resolution()
 end
@@ -576,7 +576,7 @@ end
 ##
 ## Implicitly satisfies the `Describable` interface.
 pub function DisplayMode.describe(self: DisplayMode) -> string
-    return "[Mode] {self.resolution()} refresh={self.refresh_milliHz}"
+    return f"[Mode] {self.resolution()} refresh={self.refresh_milliHz}"
 end
 
 ## Returns 1 when this mode is usable (known resolution, sane refresh).

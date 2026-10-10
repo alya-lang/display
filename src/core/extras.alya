@@ -56,7 +56,7 @@ pub function scaling_report() -> string
         end
         i += 1
     end
-    return "{len(hi)} HiDPI of {len(list)}, max {format_scale(best_scale)}, max {max_dpi(list)} dpi"
+    return f"{len(hi)} HiDPI of {len(list)}, max {format_scale(best_scale)}, max {max_dpi(list)} dpi"
 end
 
 ## Returns a one-line layout diagnostic (virtual desktop + primary + total px).
@@ -75,7 +75,7 @@ pub function layout_report() -> string
         let pd: DisplayInfo = p
         pname = pd.name
     end
-    return "{layout.summary()} | primary {pname} | {total_pixels()} px total"
+    return f"{layout.summary()} | primary {pname} | {total_pixels()} px total"
 end
 
 ## Returns HDR panels in enumeration order.
@@ -108,8 +108,8 @@ pub function mode_report() -> string
     let first: DisplayInfo = list[0]
     let modes = sorted_modes_at(0)
     if len(modes) == 0
-        return "{first.name}: no modes"
+        return f"{first.name}: no modes"
     end
     let top: DisplayMode = modes[0]
-    return "{first.name}: {len(modes)} modes, best {top.summary()}"
+    return f"{first.name}: {len(modes)} modes, best {top.summary()}"
 end

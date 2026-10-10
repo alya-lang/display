@@ -495,7 +495,7 @@ pub function topology_signature() -> string
     let list = displays()
     for d in list
         let info: DisplayInfo = d
-        cells.push("{info.name}|{info.x}|{info.y}|{info.w}|{info.h}|{info.scale_x100}|{info.refresh_milliHz}")
+        cells.push(f"{info.name}|{info.x}|{info.y}|{info.w}|{info.h}|{info.scale_x100}|{info.refresh_milliHz}")
     end
     if len(cells) == 0
         return ""

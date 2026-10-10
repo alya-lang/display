@@ -16,9 +16,9 @@ pub function format_scale(scale_x100: int) -> string
     let whole = tenths / 10
     let frac = tenths - whole * 10
     if frac == 0
-        return "{whole}x"
+        return f"{whole}x"
     end
-    return "{whole}.{frac}x"
+    return f"{whole}.{frac}x"
 end
 
 ## Formats a DPI value as `"96 dpi"` (`"unknown dpi"` for -1).
@@ -26,7 +26,7 @@ pub function format_dpi(dpi: int) -> string
     if dpi <= 0
         return "unknown dpi"
     end
-    return "{dpi} dpi"
+    return f"{dpi} dpi"
 end
 
 ## Formats a milli-Hz refresh as `"60Hz"`, `"59.94Hz"`, `"unknown"` for -1.
@@ -37,7 +37,7 @@ pub function format_refresh(refresh_milliHz: int) -> string
     let whole = refresh_milliHz / 1000
     let rest = refresh_milliHz - whole * 1000
     if rest == 0
-        return "{whole}Hz"
+        return f"{whole}Hz"
     end
     let frac = (rest + 5) / 10
     if frac >= 100
@@ -45,14 +45,14 @@ pub function format_refresh(refresh_milliHz: int) -> string
         frac -= 100
     end
     if frac == 0
-        return "{whole}Hz"
+        return f"{whole}Hz"
     end
     let tens = frac / 10
     let ones = frac - tens * 10
     if ones == 0
-        return "{whole}.{tens}Hz"
+        return f"{whole}.{tens}Hz"
     end
-    return "{whole}.{tens}{ones}Hz"
+    return f"{whole}.{tens}{ones}Hz"
 end
 
 ## Formats a resolution as `"1920x1080"` (`"unknown"` when not known).
@@ -63,9 +63,9 @@ end
 ## Formats one display (`"HDMI-1 1920x1080 @60Hz x1 (96 dpi) [primary]"`).
 pub function format_display(d: DisplayInfo) -> string
     if d.is_known() == false
-        return "{d.name} unknown"
+        return f"{d.name} unknown"
     end
-    let s = "{d.name} {d.resolution()}"
+    let s = f"{d.name} {d.resolution()}"
     let hz = format_refresh(d.refresh_milliHz)
     if hz != "unknown"
         s += " @" + hz
@@ -75,16 +75,16 @@ pub function format_display(d: DisplayInfo) -> string
         s += " " + sc
     end
     if d.dpi > 0
-        s += " ({d.dpi} dpi)"
+        s += f" ({d.dpi} dpi)"
     end
     if d.bpp > 0
-        s += " {d.bpp}bpp"
+        s += f" {d.bpp}bpp"
     end
     if len(d.color) > 0
-        s += " [{d.color}]"
+        s += f" [{d.color}]"
     end
     if len(d.connector) > 0
-        s += " <{d.connector}>"
+        s += f" <{d.connector}>"
     end
     if d.is_hdr() == true
         s += " [HDR]"
@@ -92,13 +92,13 @@ pub function format_display(d: DisplayInfo) -> string
         s += " [wide-gamut]"
     end
     if d.has_label() == true
-        s += " \"{d.label}\""
+        s += f" \"{d.label}\""
     end
     if d.is_primary() == true
         s += " [primary]"
     end
     if d.is_portrait() == true
-        s += " [portrait {d.orientation}deg]"
+        s += f" [portrait {d.orientation}deg]"
     end
     return s
 end
@@ -137,20 +137,20 @@ pub function format_snapshot(list: array) -> string
     end
     let first = format_display(list[0])
     if n == 1
-        return "Displays: 1 {word} | {first}"
+        return f"Displays: 1 {word} | {first}"
     end
-    return "Displays: {n} {word} | {first} (+{n - 1} more)"
+    return f"Displays: {n} {word} | {first} (+{n - 1} more)"
 end
 
 ## Formats a detailed multi-line report (one section per display + layout line).
 pub function format_report(list: array, layout: DisplayLayout) -> string
-    let s = "Displays: {len(list)}"
+    let s = f"Displays: {len(list)}"
     let i = 0
     while i < len(list)
-        s += "\n  [{i}] {format_display(list[i])}"
+        s += f"\n  [{i}] {format_display(list[i])}"
         i += 1
     end
-    s += "\nLayout:   {layout.summary()}"
+    s += f"\nLayout:   {layout.summary()}"
     return s
 end
 
@@ -182,7 +182,7 @@ pub function format_mode_list(modes: array, max_n: int = 8) -> string
         i += 1
     end
     if len(modes) > cap
-        s += "\n+{len(modes) - cap} more"
+        s += f"\n+{len(modes) - cap} more"
     end
     return s
 end
